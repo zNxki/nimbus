@@ -1,7 +1,14 @@
 # ☁️ Nimbus
 
 **Ship your folders to the cloud, straight from your terminal.**
-
+ 
+[![Version](https://img.shields.io/badge/version-1.1.0-blue?style=flat-square)](https://github.com/zNxki/nimbus/releases)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/zNxki/nimbus/total?style=flat-square&color=orange)](https://github.com/zNxki/nimbus/releases)
+[![Last Commit](https://img.shields.io/github/last-commit/zNxki/nimbus?style=flat-square)](https://github.com/zNxki/nimbus/commits/main)
+[![Platform](https://img.shields.io/badge/platform-apt%20%7C%20pacman%20%7C%20dnf-lightgrey?style=flat-square)](#-installation-ubuntu-arch-fedora--derivatives)
+[![Powered by rclone](https://img.shields.io/badge/powered%20by-rclone-2e7de6?style=flat-square)](https://rclone.org/)
+ 
 Nimbus is a lightweight CLI tool for Ubuntu/Linux that backs up any directory to **Google Drive**, on demand or on a schedule — no bloated GUI, no subscription, just a fast script built on top of [rclone](https://rclone.org/).
 
 ```
