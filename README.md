@@ -38,7 +38,22 @@ This downloads and runs the installer directly — it auto-detects your package 
 git clone https://github.com/zNxki/nimbus.git
 cd nimbus
 chmod +x nimbus install.sh
-./install.sh
+./install.sh install
+```
+
+### Managing the installation
+
+```bash
+./install.sh install     # fresh install (default if no argument is given)
+./install.sh update      # re-download the latest nimbus binary, config/backups untouched
+./install.sh uninstall   # remove nimbus, the cron job, and (optionally) your config/logs
+```
+
+Via curl, pass the action after `-s --`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yourusername/nimbus/main/install.sh | bash -s -- update
+curl -fsSL https://raw.githubusercontent.com/yourusername/nimbus/main/install.sh | bash -s -- uninstall
 ```
 
 ## 🔧 Setup
