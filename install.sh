@@ -116,7 +116,7 @@ do_uninstall() {
         exit 0
     fi
 
-    read -p "Remove the nimbus command? [y/N] " confirm
+    read -p "Remove the nimbus command? [y/N] " confirm < /dev/tty
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo "Aborted."
         exit 0
@@ -130,7 +130,7 @@ do_uninstall() {
         echo -e "${GREEN}✔ Removed scheduled backup job${RESET}"
     fi
 
-    read -p "Also delete config and logs (~/.config/nimbus)? [y/N] " confirm2
+    read -p "Also delete config and logs (~/.config/nimbus)? [y/N] " confirm2 < /dev/tty
     if [[ "$confirm2" =~ ^[Yy]$ ]]; then
         rm -rf "$HOME/.config/nimbus" "$HOME/.local/share/nimbus"
         echo -e "${GREEN}✔ Removed config, logs and staging data${RESET}"
@@ -142,12 +142,13 @@ do_uninstall() {
 }
 
 show_menu() {
+    clear
     banner
     echo "[1] INSTALL"
     echo "[2] UPDATE"
     echo "[3] UNINSTALL"
     echo ""
-    read -p "Choice: " choice
+    read -p "Choice: " choice < /dev/tty
     case "$choice" in
         1) ACTION="install" ;;
         2) ACTION="update" ;;
