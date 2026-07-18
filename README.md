@@ -1,143 +1,171 @@
-# ☁️ Nimbus
+#!/usr/bin/env bash
+set -e
 
-**Ship your folders to the cloud, straight from your terminal.**
+CYAN='\033[96m'
+GREEN='\033[92m'
+YELLOW='\033[93m'
+RED='\033[91m'
+RESET='\033[0m'
 
-Nimbus is a lightweight CLI tool for Ubuntu/Linux that backs up any directory to **Google Drive**, on demand or on a schedule — no bloated GUI, no subscription, just a fast script built on top of [rclone](https://rclone.org/).
+REPO_RAW_URL="https://raw.githubusercontent.com/zNxki/nimbus/main"
+ACTION="${1:-}"
 
-```
+banner() {
+    echo -e "${CYAN}"
+    cat << "EOF"
  _   _ _           _
 | \ | (_)_ __ ___ | |__  _   _ ___
 |  \| | | '_ ` _ \| '_ \| | | / __|
 | |\  | | | | | | | |_) | |_| \__ \
 |_| \_|_|_| |_| |_|_.__/ \__,_|___/
-      ship your files to the cloud
-```
+EOF
+    echo -e "${RESET}"
+}
 
-## ✨ Features
+detect_pm() {
+    if command -v apt &> /dev/null; then
+        PM="apt"; INSTALL_CMD="sudo apt update && sudo apt install -y"
+    elif command -v pacman &> /dev/null; then
+        PM="pacman"; INSTALL_CMD="sudo pacman -Sy --noconfirm"
+    elif command -v dnf &> /dev/null; then
+        PM="dnf"; INSTALL_CMD="sudo dnf install -y"
+    else
+        echo -e "${YELLOW}Could not detect apt, pacman, or dnf.${RESET}"
+        echo "Please install 'rclone' and 'python3' manually, then re-run this script."
+        exit 1
+    fi
+    echo -e "${CYAN}Detected package manager: ${PM}${RESET}"
+}
 
-- 📁 Track any number of directories
-- ☁️ Uploads securely to Google Drive via `rclone`
-- ⏱️ Automatic scheduled backups (every N minutes/hours/days)
-- 📦 Compresses to `.tar.gz` before upload
-- 📜 Built-in logging and status dashboard
-- ♻️ Easy restore listing
+fetch_nimbus_binary() {
+    # If running from a local clone (nimbus file next to this script), use it.
+    # Otherwise (e.g. curl | bash), download it straight from GitHub.
+    SCRIPT_DIR=""
+    if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "$(dirname "${BASH_SOURCE[0]}")/nimbus" ]; then
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    fi
 
-## 🚀 Installation (Ubuntu, Arch, Fedora & derivatives)
+    if [ -n "$SCRIPT_DIR" ]; then
+        sudo cp "$SCRIPT_DIR/nimbus" /usr/local/bin/nimbus
+    else
+        echo "Downloading nimbus from GitHub..."
+        sudo curl -fsSL "$REPO_RAW_URL/nimbus" -o /usr/local/bin/nimbus
+    fi
+    sudo chmod +x /usr/local/bin/nimbus
+}
 
-### One-liner (recommended)
+get_remote_version() {
+    curl -fsSL "$REPO_RAW_URL/nimbus" 2>/dev/null | grep -m1 '^VERSION = ' | sed -E 's/VERSION = "(.*)"/\1/'
+}
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/zNxki/nimbus/main/install.sh | bash
-```
+get_local_version() {
+    nimbus --version 2>/dev/null | awk '{print $2}'
+}
 
-This downloads and runs the installer directly — it auto-detects your package manager (`apt`, `pacman`, or `dnf`), installs `rclone` and `python3`, and places `nimbus` in `/usr/local/bin`.
+do_install() {
+    banner
+    echo -e "Installing Nimbus...\n"
+    detect_pm
 
-### From a local clone
+    if ! command -v rclone &> /dev/null; then
+        echo "Installing rclone..."
+        eval "$INSTALL_CMD rclone"
+    fi
+    if ! command -v python3 &> /dev/null; then
+        echo "Installing python3..."
+        eval "$INSTALL_CMD python3"
+    fi
 
-```bash
-git clone https://github.com/zNxki/nimbus.git
-cd nimbus
-chmod +x nimbus install.sh
-./install.sh install
-```
+    fetch_nimbus_binary
 
-### Managing the installation
+    echo -e "\n${GREEN}✔ Nimbus installed successfully!${RESET}"
+    echo "Try:      nimbus --help"
+    echo "Connect:  nimbus set GOOGLE_DRIVE"
+}
 
-Run without arguments for an interactive menu:
+do_update() {
+    banner
+    if ! command -v nimbus &> /dev/null; then
+        echo -e "${YELLOW}Nimbus is not installed yet. Run: ./install.sh install${RESET}"
+        exit 1
+    fi
 
-```bash
-./install.sh
-```
-```
-[1] INSTALL
-[2] UPDATE
-[3] UNINSTALL
+    echo "Checking for updates..."
+    LOCAL_VERSION="$(get_local_version)"
+    REMOTE_VERSION="$(get_remote_version)"
 
-Choice:
-```
+    if [ -z "$REMOTE_VERSION" ]; then
+        echo -e "${YELLOW}Could not check the latest version, updating anyway to be safe...${RESET}"
+    elif [ "$LOCAL_VERSION" = "$REMOTE_VERSION" ]; then
+        echo -e "${GREEN}✔ Nimbus is already up-to-date (v${LOCAL_VERSION}).${RESET}"
+        return
+    else
+        echo -e "${CYAN}New version available: v${LOCAL_VERSION} -> v${REMOTE_VERSION}${RESET}"
+    fi
 
-Or pass the action directly:
+    echo "Updating Nimbus (config and backups are left untouched)..."
+    fetch_nimbus_binary
+    echo -e "\n${GREEN}✔ Nimbus updated.${RESET}"
+    nimbus --version
+}
 
-```bash
-./install.sh install     # fresh install
-./install.sh update      # checks the latest version; updates only if outdated, otherwise says "up-to-date"
-./install.sh uninstall   # remove nimbus, the cron job, and (optionally) your config/logs
-```
+do_uninstall() {
+    banner
+    if ! command -v nimbus &> /dev/null; then
+        echo -e "${YELLOW}Nimbus doesn't seem to be installed.${RESET}"
+        exit 0
+    fi
 
-Via curl, pass the action after `-s --` (or omit it to get the interactive menu):
+    read -p "Remove the nimbus command? [y/N] " confirm < /dev/tty
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        exit 0
+    fi
+    sudo rm -f /usr/local/bin/nimbus
+    echo -e "${GREEN}✔ Removed /usr/local/bin/nimbus${RESET}"
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/zNxki/nimbus/main/install.sh | bash -s -- update
-curl -fsSL https://raw.githubusercontent.com/zNxki/nimbus/main/install.sh | bash -s -- uninstall
-```
+    # remove the cron job, if any
+    if crontab -l 2>/dev/null | grep -q "NIMBUS-BACKUP-JOB"; then
+        crontab -l | grep -v "NIMBUS-BACKUP-JOB" | crontab -
+        echo -e "${GREEN}✔ Removed scheduled backup job${RESET}"
+    fi
 
-## 🔧 Setup
+    read -p "Also delete config and logs (~/.config/nimbus)? [y/N] " confirm2 < /dev/tty
+    if [[ "$confirm2" =~ ^[Yy]$ ]]; then
+        rm -rf "$HOME/.config/nimbus" "$HOME/.local/share/nimbus"
+        echo -e "${GREEN}✔ Removed config, logs and staging data${RESET}"
+    else
+        echo -e "${CYAN}Kept config at ~/.config/nimbus${RESET}"
+    fi
 
-Connect your Google Drive account:
+    echo -e "\n${GREEN}Nimbus has been uninstalled.${RESET}"
+}
 
-```bash
-nimbus set GOOGLE_DRIVE
-```
+show_menu() {
+    banner
+    echo "[1] INSTALL"
+    echo "[2] UPDATE"
+    echo "[3] UNINSTALL"
+    echo ""
+    read -p "Choice: " choice < /dev/tty
+    case "$choice" in
+        1) ACTION="install" ;;
+        2) ACTION="update" ;;
+        3) ACTION="uninstall" ;;
+        *) echo -e "${RED}Invalid choice.${RESET}"; exit 1 ;;
+    esac
+}
 
-This walks you through rclone's guided OAuth flow — a browser window opens to authorize access.
+if [ -z "$ACTION" ]; then
+    show_menu
+fi
 
-## 📖 Usage
-
-```bash
-nimbus add <directory>       # Track a directory for backup
-nimbus remove <directory>    # Stop tracking a directory
-nimbus list                  # Show tracked directories, remote & schedule
-nimbus run                   # Run a backup right now
-nimbus each 1h                # Schedule automatic backups (30m / 2h / 1d ...)
-nimbus unschedule            # Remove the automatic schedule
-nimbus status                # Show config + recent activity
-nimbus log --lines 50        # Show the log
-nimbus restore               # List available backups on Drive
-
-nimbus exclude add <target> <pattern>    # Ignore files/folders (target: 'global' or a directory)
-nimbus exclude remove <target> <pattern> # Stop ignoring a pattern
-nimbus exclude list                      # Show global + per-directory exclude rules
-```
-
-By default, **global excludes** (applied to every tracked directory) already include `node_modules`, `.git`, `__pycache__`, `*.log`, `.DS_Store`.
-
-You can also set **per-directory** excludes — handy when one project needs `node_modules` ignored and another doesn't:
-
-```bash
-nimbus add ~/projects/app1
-nimbus add ~/projects/app2
-
-nimbus exclude add ~/projects/app1 node_modules   # only ignored in app1
-nimbus exclude add global "*.tmp"                 # ignored everywhere
-```
-
-Per-directory rules stack on top of the global ones. Patterns are glob-style and matched against filenames and folder names anywhere inside the tracked directory.
-
-### Example
-
-```bash
-nimbus add ~/Documents
-nimbus add /etc/nginx
-nimbus set GOOGLE_DRIVE
-nimbus each 6h
-```
-
-Every 6 hours, Nimbus compresses `~/Documents` and `/etc/nginx`, uploads them to your configured Google Drive folder, and logs the result — all in the background via cron.
-
-## 🗂️ Where things live
-
-| Path | Purpose |
-|---|---|
-| `~/.config/nimbus/config.json` | Configuration (tracked dirs, remote, schedule) |
-| `~/.config/nimbus/nimbus.log` | Activity log |
-| `~/.local/share/nimbus/staging/` | Temporary archives (auto-cleaned after upload) |
-
-## 🛣️ Roadmap
-
-- [ ] Backup rotation / retention policy
-- [ ] Optional archive encryption before upload
-- [ ] Support for additional cloud providers (S3, Dropbox, OneDrive)
-
-## 📄 License
-
-[Apache-2.0](LICENSE)
+case "$ACTION" in
+    install)   do_install ;;
+    update)    do_update ;;
+    uninstall) do_uninstall ;;
+    *)
+        echo "Usage: ./install.sh [install|update|uninstall]"
+        exit 1
+        ;;
+esac
