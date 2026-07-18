@@ -7,7 +7,7 @@ YELLOW='\033[93m'
 RED='\033[91m'
 RESET='\033[0m'
 
-REPO_RAW_URL="https://raw.githubusercontent.com/yourusername/nimbus/main"
+REPO_RAW_URL="https://raw.githubusercontent.com/zNxki/nimbus/main"
 ACTION="${1:-install}"
 
 banner() {
