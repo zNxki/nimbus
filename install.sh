@@ -75,6 +75,10 @@ do_install() {
         echo "Installing python3..."
         eval "$INSTALL_CMD python3"
     fi
+    if ! command -v gpg &> /dev/null; then
+        echo "Installing gnupg (optional, needed only if you enable 'nimbus set ENCRYPTION on')..."
+        eval "$INSTALL_CMD gnupg" || echo -e "${YELLOW}Could not install gnupg automatically — skip unless you need encryption.${RESET}"
+    fi
 
     fetch_nimbus_binary
 
@@ -116,7 +120,7 @@ do_uninstall() {
         exit 0
     fi
 
-    read -p "Remove the nimbus command? [y/N] " confirm < /dev/tty
+    read -r -p "Remove the nimbus command? [y/N] " confirm < /dev/tty
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo "Aborted."
         exit 0
@@ -130,7 +134,7 @@ do_uninstall() {
         echo -e "${GREEN}✔ Removed scheduled backup job${RESET}"
     fi
 
-    read -p "Also delete config and logs (~/.config/nimbus)? [y/N] " confirm2 < /dev/tty
+    read -r -p "Also delete config and logs (~/.config/nimbus)? [y/N] " confirm2 < /dev/tty
     if [[ "$confirm2" =~ ^[Yy]$ ]]; then
         rm -rf "$HOME/.config/nimbus" "$HOME/.local/share/nimbus"
         echo -e "${GREEN}✔ Removed config, logs and staging data${RESET}"
@@ -148,7 +152,7 @@ show_menu() {
     echo "[2] UPDATE"
     echo "[3] UNINSTALL"
     echo ""
-    read -p "Choice: " choice < /dev/tty
+    read -r -p "Choice: " choice < /dev/tty
     case "$choice" in
         1) ACTION="install" ;;
         2) ACTION="update" ;;

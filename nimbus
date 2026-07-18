@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Nimbus - a lightweight CLI backup tool that ships your folders to Google Drive.
-https://github.com/yourusername/nimbus
+https://github.com/zNxki/nimbus
 """
 
 import argparse
@@ -17,9 +17,11 @@ from pathlib import Path
 CONFIG_DIR = Path.home() / ".config" / "nimbus"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 LOG_FILE = CONFIG_DIR / "nimbus.log"
+LOG_MAX_BYTES = 5 * 1024 * 1024  # rotate after 5MB
+LOG_BACKUPS = 3
 STAGING_DIR = Path.home() / ".local" / "share" / "nimbus" / "staging"
 CRON_TAG = "# NIMBUS-BACKUP-JOB"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 # ANSI colors
 C_RESET = "\033[0m"
@@ -43,11 +45,13 @@ DEFAULT_CONFIG = {
     "directories": [],  # list of {"path": str, "excludes": [str]}
     "remote": None,   # e.g. "gdrive:MyBackups"
     "schedule": None,  # e.g. "1h", "30m", "1d"
-    "excludes": ["node_modules", ".git", "__pycache__", "*.log", ".DS_Store"]  # global, applied to all dirs
+    "excludes": ["node_modules", ".git", "__pycache__", "*.log", ".DS_Store"],  # global, applied to all dirs
+    "retention": None,  # e.g. 5 -> keep the 5 newest archives per directory on the remote
+    "encrypt": False,   # if true, archives are GPG-encrypted (symmetric) before upload
 }
 
 
-# utils 
+# utils
 
 def load_config():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -76,8 +80,25 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2)
 
 
+def rotate_log_if_needed():
+    """Simple size-based log rotation: nimbus.log -> nimbus.log.1 -> ... -> nimbus.log.N (oldest dropped)."""
+    try:
+        if not LOG_FILE.exists() or LOG_FILE.stat().st_size < LOG_MAX_BYTES:
+            return
+        oldest = LOG_FILE.with_name(f"{LOG_FILE.name}.{LOG_BACKUPS}")
+        oldest.unlink(missing_ok=True)
+        for i in range(LOG_BACKUPS - 1, 0, -1):
+            src = LOG_FILE.with_name(f"{LOG_FILE.name}.{i}")
+            if src.exists():
+                src.rename(LOG_FILE.with_name(f"{LOG_FILE.name}.{i + 1}"))
+        LOG_FILE.rename(LOG_FILE.with_name(f"{LOG_FILE.name}.1"))
+    except OSError:
+        pass  # rotation is best-effort; never let it break a backup run
+
+
 def log(msg, color=C_RESET):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    rotate_log_if_needed()
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"{C_DIM}[{stamp}]{C_RESET} {color}{msg}{C_RESET}")
     with open(LOG_FILE, "a") as f:
@@ -85,15 +106,15 @@ def log(msg, color=C_RESET):
 
 
 def ok(msg):
-    log(f"✔ {msg}", C_GREEN)
+    log(f"\u2714 {msg}", C_GREEN)
 
 
 def warn(msg):
-    log(f"⚠ {msg}", C_YELLOW)
+    log(f"\u26a0 {msg}", C_YELLOW)
 
 
 def err(msg):
-    log(f"✖ {msg}", C_RED)
+    log(f"\u2716 {msg}", C_RED)
 
 
 def check_rclone():
@@ -102,7 +123,13 @@ def check_rclone():
         sys.exit(1)
 
 
-# commands 
+def check_gpg():
+    if subprocess.run(["which", "gpg"], capture_output=True).returncode != 0:
+        err("'gpg' is not installed but encryption is enabled. Run: sudo apt install gnupg")
+        sys.exit(1)
+
+
+# commands
 
 def find_dir_entry(cfg, path):
     for entry in cfg["directories"]:
@@ -144,44 +171,66 @@ def cmd_list(args):
         print(f"  {C_DIM}(none yet — run: nimbus add <directory>){C_RESET}")
     else:
         for entry in cfg["directories"]:
-            print(f"  {C_CYAN}•{C_RESET} {entry['path']}")
+            print(f"  {C_CYAN}\u2022{C_RESET} {entry['path']}")
             if entry.get("excludes"):
                 print(f"      {C_DIM}excludes: {', '.join(entry['excludes'])}{C_RESET}")
-    print(f"\n{C_BOLD}Remote:{C_RESET}   {cfg['remote'] or C_DIM + '(not configured)' + C_RESET}")
-    print(f"{C_BOLD}Schedule:{C_RESET} {cfg['schedule'] or C_DIM + '(none)' + C_RESET}")
+    print(f"\n{C_BOLD}Remote:{C_RESET}    {cfg['remote'] or C_DIM + '(not configured)' + C_RESET}")
+    print(f"{C_BOLD}Schedule:{C_RESET}  {cfg['schedule'] or C_DIM + '(none)' + C_RESET}")
+    print(f"{C_BOLD}Retention:{C_RESET} {cfg['retention'] if cfg['retention'] else C_DIM + '(unlimited)' + C_RESET}")
+    print(f"{C_BOLD}Encrypt:{C_RESET}   {'on' if cfg['encrypt'] else C_DIM + 'off' + C_RESET}")
     print(f"{C_BOLD}Global excludes:{C_RESET} {', '.join(cfg['excludes']) if cfg['excludes'] else C_DIM + '(none)' + C_RESET}")
 
 
 def cmd_set(args):
     cfg = load_config()
-    if args.key.upper() != "GOOGLE_DRIVE":
-        err("Unknown key. Usage: nimbus set GOOGLE_DRIVE")
+    key = args.key.upper()
+
+    if key == "GOOGLE_DRIVE":
+        check_rclone()
+        print(f"{C_CYAN}Starting guided rclone setup for Google Drive...{C_RESET}")
+        print("Choose 'n' for a new remote, then type 'drive' as the storage type.")
+        subprocess.run(["rclone", "config"])
+
+        remotes = subprocess.run(["rclone", "listremotes"], capture_output=True, text=True).stdout.split()
+        if not remotes:
+            err("No rclone remote found. Setup aborted.")
+            sys.exit(1)
+
+        print(f"\n{C_BOLD}Available remotes:{C_RESET}")
+        for i, r in enumerate(remotes):
+            print(f"  [{i}] {r}")
+        idx = input("Pick the remote to use for backups: ").strip()
+        try:
+            remote_name = remotes[int(idx)]
+        except (ValueError, IndexError):
+            err("Invalid selection.")
+            sys.exit(1)
+
+        subfolder = input("Google Drive folder name for backups (default: Backups): ").strip() or "Backups"
+        cfg["remote"] = f"{remote_name}{subfolder}"
+        save_config(cfg)
+        ok(f"Google Drive remote set: {cfg['remote']}")
+
+    elif key == "ENCRYPTION":
+        value = (args.value or "").strip().lower()
+        if value not in ("on", "off"):
+            err("Usage: nimbus set ENCRYPTION <on|off>")
+            sys.exit(1)
+        if value == "on":
+            check_gpg()
+            cfg["encrypt"] = True
+            save_config(cfg)
+            ok("Encryption enabled. Archives will be GPG-encrypted before upload.")
+            warn("Export NIMBUS_PASSPHRASE before running backups, e.g.: export NIMBUS_PASSPHRASE='your-secret'")
+            warn("Keep that passphrase safe elsewhere too — losing it means losing access to encrypted backups.")
+        else:
+            cfg["encrypt"] = False
+            save_config(cfg)
+            ok("Encryption disabled.")
+
+    else:
+        err("Unknown key. Usage: nimbus set GOOGLE_DRIVE | nimbus set ENCRYPTION <on|off>")
         sys.exit(1)
-
-    check_rclone()
-    print(f"{C_CYAN}Starting guided rclone setup for Google Drive...{C_RESET}")
-    print("Choose 'n' for a new remote, then type 'drive' as the storage type.")
-    subprocess.run(["rclone", "config"])
-
-    remotes = subprocess.run(["rclone", "listremotes"], capture_output=True, text=True).stdout.split()
-    if not remotes:
-        err("No rclone remote found. Setup aborted.")
-        sys.exit(1)
-
-    print(f"\n{C_BOLD}Available remotes:{C_RESET}")
-    for i, r in enumerate(remotes):
-        print(f"  [{i}] {r}")
-    idx = input("Pick the remote to use for backups: ").strip()
-    try:
-        remote_name = remotes[int(idx)]
-    except (ValueError, IndexError):
-        err("Invalid selection.")
-        sys.exit(1)
-
-    subfolder = input("Google Drive folder name for backups (default: Backups): ").strip() or "Backups"
-    cfg["remote"] = f"{remote_name}{subfolder}"
-    save_config(cfg)
-    ok(f"Google Drive remote set: {cfg['remote']}")
 
 
 def make_exclude_filter(patterns):
@@ -195,12 +244,101 @@ def make_exclude_filter(patterns):
     return _filter
 
 
-def run_backup(cfg):
-    check_rclone()
+def would_exclude(rel_path, patterns):
+    """Pure helper: would a path (relative, '/'-separated) be excluded by these patterns?"""
+    name = os.path.basename(rel_path)
+    parts = rel_path.split("/")
+    return any(fnmatch.fnmatch(name, p) or any(fnmatch.fnmatch(part, p) for part in parts) for p in patterns)
+
+
+def encrypt_archive(archive_path):
+    """Encrypts archive_path with GPG (AES256 symmetric), returns the new .gpg path.
+    Deletes the plaintext archive afterwards. Requires NIMBUS_PASSPHRASE in the environment."""
+    passphrase = os.environ.get("NIMBUS_PASSPHRASE")
+    if not passphrase:
+        err("Encryption is enabled but NIMBUS_PASSPHRASE is not set. Aborting this archive.")
+        return None
+
+    enc_path = archive_path.with_suffix(archive_path.suffix + ".gpg")
+    result = subprocess.run(
+        [
+            "gpg", "--batch", "--yes", "--pinentry-mode", "loopback",
+            "--passphrase-fd", "0",
+            "--symmetric", "--cipher-algo", "AES256",
+            "-o", str(enc_path), str(archive_path),
+        ],
+        input=passphrase, capture_output=True, text=True,
+    )
+    archive_path.unlink(missing_ok=True)
+    if result.returncode != 0:
+        err(f"Encryption failed: {result.stderr.strip()}")
+        return None
+    return enc_path
+
+
+def remote_file_size(remote, filename):
+    """Returns the size in bytes of `filename` on the remote, or None if not found/unreachable."""
+    result = subprocess.run(
+        ["rclone", "lsjson", remote], capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        entries = json.loads(result.stdout)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    for entry in entries:
+        if entry.get("Name") == filename:
+            return entry.get("Size")
+    return None
+
+
+def retention_targets(entries, keep):
+    """Pure function. entries: list of (name, mod_time) tuples for one directory's archives,
+    already filtered to a single prefix. Returns the names that should be DELETED to keep
+    only the `keep` most recent, newest first. If keep is None/0, nothing is deleted."""
+    if not keep:
+        return []
+    ordered = sorted(entries, key=lambda e: e[1], reverse=True)
+    return [name for name, _ in ordered[keep:]]
+
+
+def apply_retention(remote, name_prefix, keep):
+    if not keep:
+        return
+    result = subprocess.run(["rclone", "lsjson", remote], capture_output=True, text=True)
+    if result.returncode != 0:
+        warn(f"Could not list remote for retention check: {result.stderr.strip()}")
+        return
+    try:
+        entries = json.loads(result.stdout)
+    except (json.JSONDecodeError, ValueError):
+        warn("Could not parse remote listing for retention check.")
+        return
+
+    matching = [
+        (e["Name"], e.get("ModTime", ""))
+        for e in entries
+        if e.get("Name", "").startswith(f"{name_prefix}_")
+    ]
+    to_delete = retention_targets(matching, keep)
+    for name in to_delete:
+        del_result = subprocess.run(["rclone", "deletefile", f"{remote}/{name}"], capture_output=True, text=True)
+        if del_result.returncode == 0:
+            ok(f"Retention: removed old backup {name}")
+        else:
+            warn(f"Retention: failed to remove {name}: {del_result.stderr.strip()}")
+
+
+def run_backup(cfg, dry_run=False):
+    if not dry_run:
+        check_rclone()
+        if cfg.get("encrypt"):
+            check_gpg()
     if not cfg["directories"]:
         warn("No directories to back up. Run: nimbus add <directory>")
         return
-    if not cfg["remote"]:
+    if not dry_run and not cfg["remote"]:
         warn("No remote configured. Run: nimbus set GOOGLE_DRIVE")
         return
 
@@ -213,51 +351,117 @@ def run_backup(cfg):
             warn(f"'{d}' no longer exists, skipping.")
             continue
         name = Path(d).name or "root"
+        combined_excludes = cfg.get("excludes", []) + entry.get("excludes", [])
+
+        if dry_run:
+            included, excluded = 0, 0
+            for root, dirs, files in os.walk(d):
+                rel_root = os.path.relpath(root, d)
+                for fname in files:
+                    rel = fname if rel_root == "." else f"{rel_root}/{fname}"
+                    if would_exclude(rel, combined_excludes):
+                        excluded += 1
+                    else:
+                        included += 1
+            print(f"{C_BOLD}{d}{C_RESET} -> would archive {C_GREEN}{included}{C_RESET} files, "
+                  f"skip {C_YELLOW}{excluded}{C_RESET} files (excludes: {', '.join(combined_excludes) or 'none'})")
+            continue
+
         archive_name = f"{name}_{timestamp}.tar.gz"
         archive_path = STAGING_DIR / archive_name
 
-        combined_excludes = cfg.get("excludes", []) + entry.get("excludes", [])
         log(f"Compressing '{d}' -> {archive_name}", C_CYAN)
-        exclude_filter = make_exclude_filter(combined_excludes)
-        with tarfile.open(archive_path, "w:gz") as tar:
-            tar.add(d, arcname=name, filter=exclude_filter)
+        try:
+            exclude_filter = make_exclude_filter(combined_excludes)
+            with tarfile.open(archive_path, "w:gz") as tar:
+                tar.add(d, arcname=name, filter=exclude_filter)
+        except (OSError, tarfile.TarError) as e:
+            err(f"Failed to compress '{d}': {e}. Skipping this directory.")
+            archive_path.unlink(missing_ok=True)
+            continue
+
+        upload_path = archive_path
+        upload_name = archive_name
+        if cfg.get("encrypt"):
+            log("Encrypting archive before upload...", C_CYAN)
+            enc_path = encrypt_archive(archive_path)
+            if enc_path is None:
+                continue  # error already logged; plaintext already removed
+            upload_path = enc_path
+            upload_name = enc_path.name
 
         log(f"Uploading to {cfg['remote']}...", C_CYAN)
         result = subprocess.run(
-            ["rclone", "copy", str(archive_path), cfg["remote"]],
+            ["rclone", "copy", str(upload_path), cfg["remote"]],
             capture_output=True, text=True
         )
-        if result.returncode == 0:
-            ok(f"{archive_name} uploaded to Google Drive.")
+        if result.returncode != 0:
+            err(f"Upload failed for {upload_name}: {result.stderr.strip()}")
+            upload_path.unlink(missing_ok=True)
+            continue
+
+        local_size = upload_path.stat().st_size
+        upload_path.unlink(missing_ok=True)
+        remote_size = remote_file_size(cfg["remote"], upload_name)
+        if remote_size is None:
+            warn(f"{upload_name} uploaded, but could not verify it on the remote.")
+        elif remote_size != local_size:
+            err(f"{upload_name} uploaded but size mismatch (local {local_size}B vs remote {remote_size}B).")
         else:
-            err(f"Upload failed for {archive_name}: {result.stderr.strip()}")
+            ok(f"{upload_name} uploaded and verified on Google Drive.")
 
-        archive_path.unlink(missing_ok=True)
+        apply_retention(cfg["remote"], name, cfg.get("retention"))
 
-    ok("Backup run complete.")
+    if not dry_run:
+        ok("Backup run complete.")
+    else:
+        ok("Dry run complete. No files were uploaded.")
 
 
 def cmd_run(args):
     cfg = load_config()
-    run_backup(cfg)
+    run_backup(cfg, dry_run=getattr(args, "dry_run", False))
+
+
+def cmd_sync(args):
+    """Incremental alternative to `run`: mirrors a tracked directory straight to the remote
+    with `rclone sync`, so only changed files transfer (no full re-archive each time)."""
+    check_rclone()
+    cfg = load_config()
+    path = str(Path(args.directory).expanduser().resolve())
+    entry = find_dir_entry(cfg, path)
+    if not entry:
+        err(f"'{path}' is not a tracked directory. Use: nimbus add {path}")
+        sys.exit(1)
+    if not cfg["remote"]:
+        err("No remote configured. Run: nimbus set GOOGLE_DRIVE")
+        sys.exit(1)
+
+    name = Path(path).name or "root"
+    dest = f"{cfg['remote']}/{name}-sync"
+    combined_excludes = cfg.get("excludes", []) + entry.get("excludes", [])
+
+    cmd = ["rclone", "sync", path, dest, "-v"]
+    for pattern in combined_excludes:
+        cmd += ["--filter", f"- {pattern}"]
+        cmd += ["--filter", f"- {pattern}/**"]
+
+    log(f"Syncing '{path}' -> {dest} (incremental)...", C_CYAN)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode == 0:
+        ok(f"Sync complete: {path} -> {dest}")
+    else:
+        err(f"Sync failed: {result.stderr.strip()}")
+        sys.exit(1)
 
 
 def cmd_each(args):
     cfg = load_config()
-    time_str = args.time.strip().lower()
-
-    unit = time_str[-1]
-    if unit not in ("m", "h", "d") or not time_str[:-1].isdigit():
-        err("Invalid time format. Use e.g: 30m, 2h, 1d")
+    try:
+        cron_expr = parse_cron_expr(args.time)
+    except ValueError as e:
+        err(str(e))
         sys.exit(1)
-    value = int(time_str[:-1])
-
-    if unit == "m":
-        cron_expr = f"*/{value} * * * *"
-    elif unit == "h":
-        cron_expr = f"0 */{value} * * *"
-    else:
-        cron_expr = f"0 0 */{value} * *"
 
     script_path = os.path.abspath(__file__)
     python_bin = sys.executable
@@ -268,9 +472,30 @@ def cmd_each(args):
     lines.append(cron_line)
     subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n", text=True)
 
-    cfg["schedule"] = time_str
+    cfg["schedule"] = args.time.strip().lower()
     save_config(cfg)
-    ok(f"Scheduled backup every {time_str} (cron: {cron_expr})")
+    ok(f"Scheduled backup every {cfg['schedule']} (cron: {cron_expr})")
+
+
+def parse_cron_expr(time_str):
+    """Pure helper so it's unit-testable: '30m' / '2h' / '1d' -> a cron expression string.
+    Raises ValueError on bad input."""
+    time_str = time_str.strip().lower()
+    if len(time_str) < 2 or not time_str[:-1].isdigit():
+        raise ValueError("Invalid time format. Use e.g: 30m, 2h, 1d")
+    unit = time_str[-1]
+    if unit not in ("m", "h", "d"):
+        raise ValueError("Invalid time format. Use e.g: 30m, 2h, 1d")
+    value = int(time_str[:-1])
+    if value <= 0:
+        raise ValueError("Time value must be greater than zero.")
+
+    if unit == "m":
+        return f"*/{value} * * * *"
+    elif unit == "h":
+        return f"0 */{value} * * *"
+    else:
+        return f"0 0 */{value} * *"
 
 
 def cmd_unschedule(args):
@@ -283,12 +508,31 @@ def cmd_unschedule(args):
     ok("Schedule removed.")
 
 
+def cmd_retention(args):
+    cfg = load_config()
+    if args.retention_command == "set":
+        if args.n <= 0:
+            err("Retention count must be greater than zero. Use 'nimbus retention clear' to disable it.")
+            sys.exit(1)
+        cfg["retention"] = args.n
+        save_config(cfg)
+        ok(f"Retention set: keeping the {args.n} newest backups per directory.")
+    elif args.retention_command == "clear":
+        cfg["retention"] = None
+        save_config(cfg)
+        ok("Retention disabled (unlimited backups kept).")
+    elif args.retention_command == "show":
+        print(f"{C_BOLD}Retention:{C_RESET} {cfg['retention'] if cfg['retention'] else C_DIM + '(unlimited)' + C_RESET}")
+
+
 def cmd_status(args):
     cfg = load_config()
     print(BANNER)
     print(f"{C_BOLD}Tracked directories:{C_RESET} {len(cfg['directories'])}")
     print(f"{C_BOLD}Remote:{C_RESET}              {cfg['remote'] or C_DIM + '(not configured)' + C_RESET}")
     print(f"{C_BOLD}Schedule:{C_RESET}            {cfg['schedule'] or C_DIM + '(none)' + C_RESET}")
+    print(f"{C_BOLD}Retention:{C_RESET}           {cfg['retention'] if cfg['retention'] else C_DIM + '(unlimited)' + C_RESET}")
+    print(f"{C_BOLD}Encrypt:{C_RESET}             {'on' if cfg['encrypt'] else C_DIM + 'off' + C_RESET}")
     if LOG_FILE.exists():
         print(f"\n{C_BOLD}Recent activity:{C_RESET}")
         with open(LOG_FILE) as f:
@@ -348,7 +592,7 @@ def cmd_exclude_list(args):
         print(f"  {C_DIM}(none){C_RESET}")
     else:
         for p in cfg["excludes"]:
-            print(f"  {C_RED}✖{C_RESET} {p}")
+            print(f"  {C_RED}\u2716{C_RESET} {p}")
 
     print(f"\n{C_BOLD}Per-directory excludes:{C_RESET}")
     if not cfg["directories"]:
@@ -359,7 +603,7 @@ def cmd_exclude_list(args):
             print(f"    {C_DIM}(none){C_RESET}")
         else:
             for p in entry["excludes"]:
-                print(f"    {C_RED}✖{C_RESET} {p}")
+                print(f"    {C_RED}\u2716{C_RESET} {p}")
 
 
 def cmd_restore(args):
@@ -368,12 +612,28 @@ def cmd_restore(args):
     if not cfg["remote"]:
         err("No remote configured.")
         sys.exit(1)
-    print(f"{C_BOLD}Files available on {cfg['remote']}:{C_RESET}")
-    subprocess.run(["rclone", "ls", cfg["remote"]])
-    print(f"\nTo download a file: rclone copy {cfg['remote']}/<filename> <local_destination>")
+
+    if not args.filename:
+        print(f"{C_BOLD}Files available on {cfg['remote']}:{C_RESET}")
+        subprocess.run(["rclone", "ls", cfg["remote"]])
+        print(f"\nTo download one: nimbus restore <filename> [destination]")
+        return
+
+    dest = args.destination or "."
+    source = f"{cfg['remote']}/{args.filename}"
+    log(f"Downloading {source} -> {dest} ...", C_CYAN)
+    result = subprocess.run(["rclone", "copy", source, dest], capture_output=True, text=True)
+    if result.returncode == 0:
+        ok(f"Restored '{args.filename}' to {dest}")
+        if args.filename.endswith(".gpg"):
+            warn(f"This backup is encrypted. Decrypt it with: gpg --batch --passphrase-fd 0 -o "
+                 f"{args.filename[:-4]} -d {dest}/{args.filename}")
+    else:
+        err(f"Restore failed: {result.stderr.strip()}")
+        sys.exit(1)
 
 
-# entrypoint 
+# entrypoint
 
 def main():
     parser = argparse.ArgumentParser(prog="nimbus", description="Ship your folders to Google Drive, effortlessly.")
@@ -391,12 +651,18 @@ def main():
     p = sub.add_parser("list", help="List tracked directories")
     p.set_defaults(func=cmd_list)
 
-    p = sub.add_parser("set", help="Configure options (e.g. GOOGLE_DRIVE)")
+    p = sub.add_parser("set", help="Configure options (GOOGLE_DRIVE, ENCRYPTION on|off)")
     p.add_argument("key")
+    p.add_argument("value", nargs="?", help="Value for keys that need one, e.g. ENCRYPTION on")
     p.set_defaults(func=cmd_set)
 
     p = sub.add_parser("run", help="Run a backup right now")
+    p.add_argument("--dry-run", action="store_true", help="Show what would be archived without uploading anything")
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("sync", help="Incrementally mirror one tracked directory straight to the remote (no re-archiving)")
+    p.add_argument("directory")
+    p.set_defaults(func=cmd_sync)
 
     p = sub.add_parser("each", help="Schedule automatic backups (e.g. 30m, 2h, 1d)")
     p.add_argument("time")
@@ -405,6 +671,16 @@ def main():
     p = sub.add_parser("unschedule", help="Remove the automatic schedule")
     p.set_defaults(func=cmd_unschedule)
 
+    p_ret = sub.add_parser("retention", help="Keep only the N newest backups per directory on the remote")
+    ret_sub = p_ret.add_subparsers(dest="retention_command", required=True)
+    pr = ret_sub.add_parser("set", help="Set how many backups to keep per directory")
+    pr.add_argument("n", type=int)
+    pr.set_defaults(func=cmd_retention)
+    pr = ret_sub.add_parser("clear", help="Disable retention (keep everything)")
+    pr.set_defaults(func=cmd_retention)
+    pr = ret_sub.add_parser("show", help="Show the current retention setting")
+    pr.set_defaults(func=cmd_retention)
+
     p = sub.add_parser("status", help="Show config status and recent activity")
     p.set_defaults(func=cmd_status)
 
@@ -412,7 +688,9 @@ def main():
     p.add_argument("--lines", type=int, help="Number of lines to show")
     p.set_defaults(func=cmd_log)
 
-    p = sub.add_parser("restore", help="List available backups on Drive for restoring")
+    p = sub.add_parser("restore", help="List available backups, or download one: nimbus restore <file> [dest]")
+    p.add_argument("filename", nargs="?", help="Backup filename to download (omit to just list)")
+    p.add_argument("destination", nargs="?", help="Local destination folder (default: current directory)")
     p.set_defaults(func=cmd_restore)
 
     p_excl = sub.add_parser("exclude", help="Manage excluded files/folders (e.g. node_modules)")
