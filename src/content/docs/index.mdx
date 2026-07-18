@@ -1,0 +1,46 @@
+---
+title: Nimbus
+description: Ship your folders to Google Drive, straight from your terminal.
+template: splash
+hero:
+  title: ☁️ Nimbus
+  tagline: Ship your folders to Google Drive, straight from your terminal. No bloated GUI, no subscription — just a fast CLI built on rclone.
+  image:
+    file: ../../assets/houston.webp
+  actions:
+    - text: Get Started
+      link: /nimbus/getting-started/introduction/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/zNxki/nimbus
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why Nimbus?
+
+<CardGrid stagger>
+	<Card title="Fast setup" icon="rocket">
+		One-liner install, guided Google Drive auth, and you're backing up in under two minutes.
+	</Card>
+	<Card title="Smart excludes" icon="approve-check">
+		Global and per-directory exclude rules — ignore `node_modules` in one project, keep it in another.
+	</Card>
+	<Card title="Set & forget" icon="clock">
+		Schedule automatic backups with `nimbus each 6h` and let cron do the rest.
+	</Card>
+	<Card title="No lock-in" icon="open-book">
+		Built on top of [rclone](https://rclone.org/) — your files stay in a plain Google Drive folder, not a proprietary format.
+	</Card>
+</CardGrid>
+
+## Quick install
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/zNxki/nimbus/main/install.sh)
+```
+
+Works on **Ubuntu/Debian** (apt), **Arch** (pacman), and **Fedora** (dnf) — the installer detects your package manager automatically.
