@@ -28,6 +28,8 @@
             --accent-bright: #7fe6f5;
             --accent-glow: rgba(34, 184, 207, 0.28);
             --amber: #e3b969;
+            --swatch-rose: #b6677e;
+            --swatch-moss: #7ea888;
             --mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
             --radius: 10px;
         }
@@ -345,6 +347,91 @@
             color: var(--amber);
         }
 
+        .fetch {
+            display: flex;
+            gap: 1.6rem;
+            align-items: center;
+            margin: 0.9rem 0 1.3rem;
+            padding-bottom: 1.1rem;
+            border-bottom: 1px solid var(--line-soft);
+        }
+
+        .fetch__art {
+            margin: 0;
+            color: var(--accent);
+            font-size: 0.78rem;
+            line-height: 1.35;
+            flex-shrink: 0;
+            text-shadow: 0 0 14px var(--accent-glow);
+        }
+
+        .fetch__info {
+            font-size: 0.82rem;
+            line-height: 1.6;
+            min-width: 0;
+        }
+
+        .fetch__head {
+            color: var(--fg);
+            font-weight: 600;
+        }
+
+        .fetch__rule {
+            color: var(--fg-dimmer);
+            margin: 0.15rem 0 0.4rem;
+            letter-spacing: 0.02em;
+        }
+
+        .fetch__row {
+            color: var(--fg-dim);
+        }
+
+        .fetch__row .k {
+            color: var(--accent-bright);
+        }
+
+        .fetch__swatches {
+            display: flex;
+            margin-top: 0.55rem;
+        }
+
+        .fetch__swatches span {
+            width: 0.85rem;
+            height: 0.6rem;
+        }
+
+        .fetch__swatches span:nth-child(1) {
+            background: var(--fg-dimmer);
+        }
+
+        .fetch__swatches span:nth-child(2) {
+            background: var(--swatch-rose);
+        }
+
+        .fetch__swatches span:nth-child(3) {
+            background: var(--swatch-moss);
+        }
+
+        .fetch__swatches span:nth-child(4) {
+            background: var(--amber);
+        }
+
+        .fetch__swatches span:nth-child(5) {
+            background: var(--accent);
+        }
+
+        .fetch__swatches span:nth-child(6) {
+            background: var(--accent-bright);
+        }
+
+        .fetch__swatches span:nth-child(7) {
+            background: var(--fg-dim);
+        }
+
+        .fetch__swatches span:nth-child(8) {
+            background: var(--fg);
+        }
+
         .foot {
             margin-top: 1.4rem;
             display: flex;
@@ -393,6 +480,16 @@
             .seg:last-child {
                 margin-left: 0;
             }
+
+            .fetch {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.8rem;
+            }
+
+            .fetch__art {
+                font-size: 0.68rem;
+            }
         }
     </style>
 </head>
@@ -409,6 +506,33 @@
             </div>
 
             <div class="term__body">
+                <p class="line">
+                    <span class="prompt-sym">$</span><span class="prompt">znxki@docs</span><span
+                        class="prompt-path">:~</span><span class="prompt-sym">$</span>
+                    neofetch
+                </p>
+
+                <div class="fetch">
+                    <pre class="fetch__art" aria-hidden="true">    .--.
+ .-(    ).
+(___.__)__)
+   '  '  '</pre>
+                    <div class="fetch__info">
+                        <p class="fetch__head">znxki@docs</p>
+                        <p class="fetch__rule">----------</p>
+                        <p class="fetch__row"><span class="k">OS:</span> znxki/docs</p>
+                        <p class="fetch__row"><span class="k">Host:</span> docs.znxki.it</p>
+                        <p class="fetch__row"><span class="k">Kernel:</span> static-html 1.0</p>
+                        <p class="fetch__row"><span class="k">Uptime:</span> always-on</p>
+                        <p class="fetch__row"><span class="k">Progetti:</span> 1 attivo, 1 in coda</p>
+                        <p class="fetch__row"><span class="k">Shell:</span> /bin/sh</p>
+                        <div class="fetch__swatches" aria-hidden="true">
+                            <span></span><span></span><span></span><span></span>
+                            <span></span><span></span><span></span><span></span>
+                        </div>
+                    </div>
+                </div>
+
                 <p class="line">
                     <span class="prompt-sym">$</span><span class="prompt">znxki@docs</span><span
                         class="prompt-path">:~</span><span class="prompt-sym">$</span>
