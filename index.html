@@ -1,8 +1,4 @@
 <!-- HOMEPAGE docs.znxki.it -->
-
-
-
-
 <!doctype html>
 <html lang="it">
 
@@ -10,18 +6,30 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>docs.znxki.it</title>
-    <meta name="description" content="Documentazione dei progetti znxki" />
+    <meta name="description" content="Documentazione dei progetti open source di znxki." />
+    <meta name="color-scheme" content="dark" />
     <link rel="icon" href="/nimbus/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+        rel="stylesheet" />
     <style>
         :root {
-            --bg: #0b0d0f;
-            --bg-raised: #111417;
-            --line: #23282d;
-            --fg: #d8dee3;
-            --fg-dim: #7b868f;
-            --accent: #5fd0a8;
-            --accent-dim: #2c5c4c;
+            --bg: #090b0d;
+            --bg-term: #0d1114;
+            --bg-raised: #131a1d;
+            --line: #1e2a2d;
+            --line-soft: #172023;
+            --fg: #d9e4e6;
+            --fg-dim: #64787d;
+            --fg-dimmer: #3a494c;
+            --accent: #22b8cf;
+            --accent-bright: #7fe6f5;
+            --accent-glow: rgba(34, 184, 207, 0.28);
+            --amber: #e3b969;
             --mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+            --radius: 10px;
         }
 
         * {
@@ -36,73 +44,184 @@
 
         body {
             background: var(--bg);
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(34, 184, 207, 0.08), transparent),
+                radial-gradient(ellipse 60% 40% at 90% 100%, rgba(34, 184, 207, 0.05), transparent);
             color: var(--fg);
             font-family: var(--mono);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 8vh 5vw 6vh;
+            justify-content: center;
+            padding: 6vh 5vw;
+            position: relative;
+            overflow-x: hidden;
         }
 
-        .wrap {
+        /* subtle CRT texture — decorative, sits above bg, below content */
+        .scanlines {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+            background: repeating-linear-gradient(to bottom,
+                    rgba(255, 255, 255, 0.018) 0px,
+                    rgba(255, 255, 255, 0.018) 1px,
+                    transparent 1px,
+                    transparent 3px);
+            mix-blend-mode: overlay;
+        }
+
+        .vignette {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+            box-shadow: inset 0 0 22vw rgba(0, 0, 0, 0.55);
+        }
+
+        .stage {
+            position: relative;
+            z-index: 2;
             width: 100%;
-            max-width: 640px;
+            max-width: 760px;
+        }
+
+        .term {
+            background: var(--bg-term);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            box-shadow:
+                0 0 0 1px rgba(34, 184, 207, 0.05),
+                0 30px 80px -20px rgba(0, 0, 0, 0.7),
+                0 0 60px -25px var(--accent-glow);
+            overflow: hidden;
+        }
+
+        .term__bar {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.65rem 1rem;
+            border-bottom: 1px solid var(--line);
+            background: var(--bg-raised);
+        }
+
+        .term__bar .pulse {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 8px 1px var(--accent-glow);
+            flex-shrink: 0;
+        }
+
+        @media (prefers-reduced-motion: no-preference) {
+            .term__bar .pulse {
+                animation: pulse 2.6s ease-in-out infinite;
+            }
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.35;
+            }
+        }
+
+        .term__title {
+            font-size: 0.72rem;
+            color: var(--fg-dim);
+            letter-spacing: 0.04em;
+        }
+
+        .term__title strong {
+            color: var(--fg);
+            font-weight: 500;
+        }
+
+        .term__body {
+            padding: 1.5rem 1.4rem 1.2rem;
+        }
+
+        .line {
+            margin: 0;
+            font-size: 0.92rem;
+            line-height: 1.7;
+            white-space: pre-wrap;
         }
 
         .prompt {
-            color: var(--fg-dim);
-            font-size: 0.85rem;
-            letter-spacing: 0.02em;
-            margin-bottom: 0.9rem;
-        }
-
-        .prompt .sym {
             color: var(--accent);
+            font-weight: 500;
         }
 
-        h1 {
-            font-size: clamp(1.6rem, 4vw, 2.1rem);
-            font-weight: 600;
-            margin: 0 0 0.3rem;
-            letter-spacing: -0.01em;
-        }
-
-        h1 .dim {
+        .prompt-path {
             color: var(--fg-dim);
-            font-weight: 400;
         }
 
-        .sub {
+        .prompt-sym {
             color: var(--fg-dim);
-            font-size: 0.95rem;
-            margin: 0 0 2.4rem;
-            line-height: 1.5;
+            margin-right: 0.5em;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 0.55em;
+            background: var(--accent);
+            color: transparent;
+            margin-left: 0.1em;
+        }
+
+        @media (prefers-reduced-motion: no-preference) {
+            .cursor {
+                animation: blink 1.05s steps(1) infinite;
+            }
+        }
+
+        @keyframes blink {
+
+            0%,
+            49% {
+                opacity: 1;
+            }
+
+            50%,
+            100% {
+                opacity: 0;
+            }
+        }
+
+        .total {
+            color: var(--fg-dimmer);
+            font-size: 0.82rem;
+            margin: 0.9rem 0 0.7rem;
         }
 
         .listing {
-            border-top: 1px solid var(--line);
+            border-top: 1px solid var(--line-soft);
         }
 
-        a.entry {
-            display: flex;
-            align-items: baseline;
-            gap: 0.9rem;
-            padding: 1.05rem 0.2rem;
-            border-bottom: 1px solid var(--line);
+        .entry {
+            display: block;
             text-decoration: none;
             color: var(--fg);
-            transition: background 0.15s ease, padding-left 0.15s ease;
+            padding: 0.85rem 0.15rem 0.85rem 0.7rem;
+            border-bottom: 1px solid var(--line-soft);
+            border-left: 2px solid transparent;
+            transition: background 0.15s ease, border-left-color 0.15s ease;
         }
 
-        a.entry:hover {
-            background: var(--bg-raised);
-            padding-left: 0.6rem;
-        }
-
-        a.entry:hover .arrow {
-            transform: translateX(3px);
-            opacity: 1;
+        a.entry:hover,
+        a.entry:focus-visible {
+            background: rgba(34, 184, 207, 0.045);
+            border-left-color: var(--accent);
         }
 
         a.entry:focus-visible {
@@ -110,62 +229,261 @@
             outline-offset: -2px;
         }
 
-        .entry .path {
-            color: var(--accent);
+        .entry__row {
+            display: grid;
+            grid-template-columns: 92px 26px 68px 68px 64px 108px 1fr auto;
+            align-items: baseline;
+            gap: 0.5rem;
+            font-size: 0.82rem;
+        }
+
+        .perm {
+            color: var(--fg-dim);
+        }
+
+        .links,
+        .owner,
+        .group {
+            color: var(--fg-dimmer);
+        }
+
+        .size {
+            color: var(--fg-dim);
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .date {
+            color: var(--fg-dim);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .name {
+            color: var(--accent-bright);
             font-weight: 600;
-            font-size: 1rem;
+            letter-spacing: 0.01em;
+        }
+
+        .arrow {
+            color: var(--fg-dimmer);
+            opacity: 0;
+            transform: translateX(-2px);
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            justify-self: end;
+        }
+
+        a.entry:hover .arrow,
+        a.entry:focus-visible .arrow {
+            opacity: 1;
+            transform: translateX(2px);
+            color: var(--accent);
+        }
+
+        .entry__desc {
+            margin: 0.35rem 0 0;
+            padding-left: calc(92px + 26px + 68px + 68px + 64px + 108px + 0.5rem * 6);
+            color: var(--fg-dim);
+            font-size: 0.82rem;
+            font-style: italic;
+        }
+
+        .entry__desc .tag {
+            display: inline-block;
+            margin-left: 0.6rem;
+            padding: 0.05rem 0.4rem;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            color: var(--amber);
+            font-style: normal;
+            font-size: 0.72rem;
+            letter-spacing: 0.02em;
+        }
+
+        .queued {
+            padding: 0.7rem 0.15rem 0.9rem 0.7rem;
+            color: var(--fg-dimmer);
+            font-size: 0.82rem;
+            font-style: italic;
+        }
+
+        .queued .hash {
+            color: var(--fg-dimmer);
+            margin-right: 0.4em;
+        }
+
+        .prompt-line {
+            margin-top: 0.9rem;
+        }
+
+        .term__status {
+            display: flex;
+            border-top: 1px solid var(--line);
+            background: var(--bg-raised);
+            font-size: 0.7rem;
+            letter-spacing: 0.03em;
+        }
+
+        .seg {
+            padding: 0.5rem 0.85rem;
+            color: var(--fg-dim);
+            border-right: 1px solid var(--line);
             white-space: nowrap;
         }
 
-        .entry .desc {
-            color: var(--fg-dim);
-            font-size: 0.88rem;
-            flex: 1;
+        .seg:last-child {
+            border-right: none;
+            margin-left: auto;
+            font-variant-numeric: tabular-nums;
         }
 
-        .entry .arrow {
-            color: var(--fg-dim);
-            opacity: 0;
-            transition: opacity 0.15s ease, transform 0.15s ease;
-            font-size: 1rem;
+        .seg--host {
+            color: var(--accent-bright);
+            background: rgba(34, 184, 207, 0.08);
         }
 
-        footer {
-            margin-top: 3rem;
-            color: var(--fg-dim);
-            font-size: 0.78rem;
-            opacity: 0.6;
+        .seg--count {
+            color: var(--amber);
         }
 
-        @media (max-width: 480px) {
-            a.entry {
+        .foot {
+            margin-top: 1.4rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.74rem;
+            color: var(--fg-dimmer);
+        }
+
+        .foot a {
+            color: var(--fg-dim);
+            text-decoration: none;
+            border-bottom: 1px solid var(--line);
+            transition: color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .foot a:hover,
+        .foot a:focus-visible {
+            color: var(--accent-bright);
+            border-color: var(--accent);
+        }
+
+        @media (max-width: 620px) {
+            .entry__row {
+                grid-template-columns: 1fr auto;
+                column-gap: 0.5rem;
+            }
+
+            .perm,
+            .links,
+            .owner,
+            .group,
+            .size,
+            .date {
+                display: none;
+            }
+
+            .entry__desc {
+                padding-left: 0;
+            }
+
+            .term__status {
                 flex-wrap: wrap;
             }
 
-            .entry .desc {
-                flex-basis: 100%;
-                order: 3;
+            .seg:last-child {
+                margin-left: 0;
             }
         }
     </style>
 </head>
 
 <body>
-    <div class="wrap">
-        <div class="prompt"><span class="sym">$</span> ls /docs</div>
-        <h1>docs<span class="dim">.znxki.it</span></h1>
-        <p class="sub">Documentazione dei progetti znxki. Seleziona quella che ti serve.</p>
+    <div class="scanlines" aria-hidden="true"></div>
+    <div class="vignette" aria-hidden="true"></div>
 
-        <nav class="listing">
-            <a class="entry" href="/nimbus/">
-                <span class="path">nimbus/</span>
-                <span class="desc">Ship your folders to Google Drive, straight from your terminal.</span>
-                <span class="arrow">&rarr;</span>
-            </a>
-        </nav>
+    <main class="stage">
+        <div class="term" role="region" aria-label="Elenco documentazione znxki">
+            <div class="term__bar">
+                <span class="pulse" aria-hidden="true"></span>
+                <span class="term__title"><strong>znxki@docs</strong> — sessione in sola lettura — 80×24</span>
+            </div>
 
-        <footer>znxki &mdash; documentazione</footer>
-    </div>
+            <div class="term__body">
+                <p class="line">
+                    <span class="prompt-sym">$</span><span class="prompt">znxki@docs</span><span
+                        class="prompt-path">:~</span><span class="prompt-sym">$</span>
+                    <span class="typed" data-text="ls -la /docs">ls -la /docs</span>
+                </p>
+
+                <p class="total">totale 8</p>
+
+                <nav class="listing" aria-label="Progetti documentati">
+                    <a class="entry" href="/nimbus/">
+                        <span class="entry__row">
+                            <span class="perm">drwxr-xr-x</span>
+                            <span class="links">4</span>
+                            <span class="owner">znxki</span>
+                            <span class="group">staff</span>
+                            <span class="size">4.0K</span>
+                            <span class="date">18 lug 09:14</span>
+                            <span class="name">nimbus/</span>
+                            <span class="arrow" aria-hidden="true">&rarr;</span>
+                        </span>
+                        <p class="entry__desc">Ship your folders to Google Drive, straight from your terminal.<span
+                                class="tag">v1.2.0</span></p>
+                    </a>
+                </nav>
+
+                <p class="queued"><span class="hash">#</span>altri progetti in coda — non ancora scritti</p>
+
+                <p class="line prompt-line">
+                    <span class="prompt-sym">$</span><span class="prompt">znxki@docs</span><span
+                        class="prompt-path">:~</span><span class="prompt-sym">$</span>
+                    <span class="cursor">_</span>
+                </p>
+            </div>
+
+            <div class="term__status" aria-hidden="true">
+                <span class="seg seg--host">znxki</span>
+                <span class="seg seg--path">/docs</span>
+                <span class="seg seg--count">1 attivo · 1 in coda</span>
+                <span class="seg" id="clock">--:--:--</span>
+            </div>
+        </div>
+
+        <p class="foot">
+            <span>documentazione znxki</span>
+            <a href="https://github.com/zNxki" target="_blank" rel="noopener">github.com/zNxki</a>
+        </p>
+    </main>
+
+    <script>
+        (function () {
+            var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            var typed = document.querySelector('.typed');
+
+            if (typed && !reduceMotion) {
+                var text = typed.getAttribute('data-text') || typed.textContent;
+                typed.textContent = '';
+                var i = 0;
+                (function tick() {
+                    if (i <= text.length) {
+                        typed.textContent = text.slice(0, i);
+                        i++;
+                        setTimeout(tick, 38);
+                    }
+                })();
+            }
+
+            var clock = document.getElementById('clock');
+            if (clock) {
+                var fmt = new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                var tick2 = function () { clock.textContent = fmt.format(new Date()); };
+                tick2();
+                setInterval(tick2, 1000);
+            }
+        })();
+    </script>
 </body>
 
 </html>
