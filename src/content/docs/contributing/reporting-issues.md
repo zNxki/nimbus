@@ -52,8 +52,8 @@ Links, examples from other tools, etc.
 
 Before opening a feature request, check if it's already tracked:
 
-- [ ] Backup rotation / retention policy
-- [ ] Optional archive encryption before upload
+- [x] Backup rotation / retention policy
+- [x] Optional archive encryption before upload
 - [ ] Support for additional cloud providers (S3, Dropbox, OneDrive)
 - [ ] Locking to prevent overlapping backup runs
 

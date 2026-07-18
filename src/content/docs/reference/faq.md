@@ -9,11 +9,11 @@ Not yet — Nimbus is currently focused on Google Drive. Since it's built on [rc
 
 ### Is my data encrypted before upload?
 
-Not currently. Archives are uploaded as plain `.tar.gz` over rclone's HTTPS connection to Google (in transit encryption), but not encrypted at rest client-side. Encryption before upload is on the roadmap — track it in the repo's issues.
+By default, archives are uploaded as plain `.tar.gz` over rclone's HTTPS connection to Google (in transit encryption), but not encrypted at rest client-side. You can turn on optional GPG/AES256 client-side encryption with `nimbus set ENCRYPTION on` — see [Encryption](/nimbus/guides/encryption/).
 
 ### Does Nimbus deduplicate or version backups?
 
-No. Every run creates a brand-new timestamped archive. There's no retention policy or automatic cleanup yet (also on the roadmap) — old archives on Drive will accumulate until you remove them manually or via `rclone delete`.
+No deduplication — every `nimbus run` creates a brand-new timestamped archive. You can cap how many pile up with [retention](/nimbus/guides/retention/) (`nimbus retention set <n>`), which automatically prunes older archives per directory; without it, backups accumulate until you remove them manually or via `rclone delete`. For a de-duplicated mirror instead of discrete archives, use [`nimbus sync`](/nimbus/guides/incremental-sync/).
 
 ### Can I back up to a Shared Drive (Team Drive)?
 
@@ -30,6 +30,11 @@ Yes, that's a primary use case. The one extra step is authorizing rclone without
 ### What happens if two backups overlap (a long-running one and a scheduled one)?
 
 Nimbus doesn't currently lock against concurrent runs. Avoid scheduling backups more frequently than they take to complete, especially for large directories.
+
+### Does Nimbus verify that an upload actually landed correctly?
+
+Yes — right after each upload, Nimbus compares the file's size on Google Drive against the local
+size and logs a warning if it can't verify, or an error if the sizes don't match.
 
 ### How do I completely remove Nimbus and start fresh?
 

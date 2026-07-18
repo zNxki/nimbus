@@ -41,7 +41,12 @@ Output includes each directory, its per-directory excludes (if any), the configu
 Every tracked directory is:
 
 1. Compressed into `<folder-name>_<timestamp>.tar.gz`
-2. Uploaded to your configured Google Drive remote
-3. Deleted locally (the temporary archive, not the original folder!)
+2. Encrypted, if [encryption](/nimbus/guides/encryption/) is turned on (producing a `.gpg` file instead)
+3. Uploaded to your configured Google Drive remote
+4. Verified — Nimbus checks the uploaded file's size against the remote
+5. Deleted locally (the temporary archive, not the original folder!)
+6. Pruned per your [retention](/nimbus/guides/retention/) setting, if any
 
 If a tracked directory no longer exists on disk when a backup runs, Nimbus logs a warning and skips it — it won't fail the whole run.
+
+For large or frequently-changing directories, [`nimbus sync`](/nimbus/guides/incremental-sync/) is an alternative to this archive-based flow — it mirrors the directory straight to the remote instead.

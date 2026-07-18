@@ -52,7 +52,8 @@ chmod +x nimbus install.sh
 
 1. **Detects your package manager** — `apt` (Ubuntu/Debian), `pacman` (Arch), or `dnf` (Fedora/RHEL)
 2. **Installs dependencies** — `rclone` and `python3`, if not already present
-3. **Copies the script** to `/usr/local/bin/nimbus`, making it available system-wide
+3. **Installs `gnupg`** (best-effort) — only needed later if you turn on [archive encryption](/nimbus/guides/encryption/); installation continues even if this step fails
+4. **Copies the script** to `/usr/local/bin/nimbus`, making it available system-wide
 
 ## Verify the install
 

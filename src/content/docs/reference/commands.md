@@ -35,12 +35,40 @@ Launches the guided `rclone` setup to connect a Google Drive account. See the [r
 nimbus set GOOGLE_DRIVE
 ```
 
+## `nimbus set ENCRYPTION <on|off>`
+
+Turns GPG/AES256 archive encryption on or off. See the [Encryption guide](/nimbus/guides/encryption/).
+
+```bash
+nimbus set ENCRYPTION on
+nimbus set ENCRYPTION off
+```
+
 ## `nimbus run`
 
-Run a backup immediately, for all tracked directories.
+Run a backup immediately, for all tracked directories. After each upload, Nimbus checks the
+file's size on the remote against the local size and logs a warning/error if they don't match.
 
 ```bash
 nimbus run
+```
+
+## `nimbus run --dry-run`
+
+Preview what would be archived/skipped for every tracked directory, without creating an archive
+or touching the remote. See the [Dry-Run guide](/nimbus/guides/dry-run/).
+
+```bash
+nimbus run --dry-run
+```
+
+## `nimbus sync <directory>`
+
+Incrementally mirror one tracked directory straight to the remote with `rclone sync` — only
+changed files transfer, no re-archiving. See the [Incremental Sync guide](/nimbus/guides/incremental-sync/).
+
+```bash
+nimbus sync ~/Documents
 ```
 
 ## `nimbus each <time>`
@@ -75,12 +103,40 @@ Print the log file. Defaults to the last 20 lines.
 nimbus log --lines 50
 ```
 
-## `nimbus restore`
+## `nimbus retention set <n>`
 
-List backups available on the configured remote, with a suggested `rclone copy` command to download one.
+Keep only the N newest backups per tracked directory on the remote; older ones are deleted
+automatically after each successful upload. See the [Retention guide](/nimbus/guides/retention/).
+
+```bash
+nimbus retention set 5
+```
+
+## `nimbus retention clear`
+
+Disable retention (keep every backup, unlimited).
+
+```bash
+nimbus retention clear
+```
+
+## `nimbus retention show`
+
+Show the current retention setting.
+
+```bash
+nimbus retention show
+```
+
+## `nimbus restore [filename] [destination]`
+
+With no arguments, lists backups available on the configured remote. With a filename, downloads
+that archive (via `rclone copy`) into `destination`, or the current directory if omitted. See
+[Restoring Backups](/nimbus/guides/restoring/).
 
 ```bash
 nimbus restore
+nimbus restore Documents_20260716_030000.tar.gz ~/restore-tmp/
 ```
 
 ## `nimbus exclude add <target> <pattern>`

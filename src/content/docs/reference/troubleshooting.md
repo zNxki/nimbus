@@ -57,6 +57,40 @@ You're on a headless server. You need to run `rclone authorize "drive"` on a **d
   ```
 - Re-create the schedule: `nimbus each 6h`
 
+## `Encryption is enabled but NIMBUS_PASSPHRASE is not set`
+
+You turned encryption on (`nimbus set ENCRYPTION on`) but didn't export the passphrase in the
+shell (or cron environment) where the backup is actually running:
+
+```bash
+export NIMBUS_PASSPHRASE='your-secret-passphrase'
+```
+
+If this happens on a **scheduled** run via `nimbus each`, remember cron doesn't inherit your
+interactive shell's environment — the variable needs to be set wherever cron picks up its
+environment (e.g. directly in the crontab). See [Encryption](/nimbus/guides/encryption/).
+
+## `'gpg' is not installed but encryption is enabled`
+
+Install GnuPG manually:
+
+```bash
+# Ubuntu/Debian
+sudo apt install gnupg
+
+# Arch
+sudo pacman -S gnupg
+
+# Fedora
+sudo dnf install gnupg
+```
+
+## Upload succeeded but logged a size mismatch
+
+Nimbus checks the uploaded file's size against Google Drive right after upload. A mismatch
+usually means a flaky connection during upload — re-run `nimbus run` for that directory. If it
+persists, test the upload manually with `rclone copy <file> <remote> -v` for more detail.
+
 ## A tracked directory keeps getting skipped
 
 Nimbus logs `'<path>' no longer exists, skipping.` if a tracked path was deleted or moved. Update it with:

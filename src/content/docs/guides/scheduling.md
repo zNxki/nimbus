@@ -45,6 +45,10 @@ Both show the active schedule (or "none" if unscheduled).
 Nimbus manages its own cron entries using a unique tag comment. Running `nimbus each` again **replaces** the previous schedule rather than adding a second one — you can't stack multiple schedules.
 </Aside>
 
+<Aside type="note">
+If you've turned on [encryption](/nimbus/guides/encryption/), make sure `NIMBUS_PASSPHRASE` is available in the environment cron uses to run the job — cron doesn't inherit your interactive shell's exported variables.
+</Aside>
+
 ## How it works under the hood
 
 `nimbus each 6h` translates to a standard cron expression (`0 */6 * * *`) and inserts a line like:
