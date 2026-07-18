@@ -22,16 +22,16 @@ Nimbus is a lightweight CLI tool for Ubuntu/Linux that backs up any directory to
 - 📜 Built-in logging and status dashboard
 - ♻️ Easy restore listing
 
-## 🚀 Installation (Ubuntu 26.04)
+## 🚀 Installation (Ubuntu, Arch, Fedora & derivatives)
 
 ```bash
-git clone https://github.com/yourusername/nimbus.git
+git clone https://github.com/zNxki/nimbus.git
 cd nimbus
 chmod +x nimbus install.sh
 ./install.sh
 ```
 
-The installer sets up `rclone`, `python3`, and places `nimbus` in `/usr/local/bin` so it's available system-wide.
+The installer auto-detects your package manager (`apt`, `pacman`, or `dnf`), sets up `rclone` and `python3`, and places `nimbus` in `/usr/local/bin` so it's available system-wide.
 
 ## 🔧 Setup
 
@@ -55,7 +55,25 @@ nimbus unschedule            # Remove the automatic schedule
 nimbus status                # Show config + recent activity
 nimbus log --lines 50        # Show the log
 nimbus restore               # List available backups on Drive
+
+nimbus exclude add <target> <pattern>    # Ignore files/folders (target: 'global' or a directory)
+nimbus exclude remove <target> <pattern> # Stop ignoring a pattern
+nimbus exclude list                      # Show global + per-directory exclude rules
 ```
+
+By default, **global excludes** (applied to every tracked directory) already include `node_modules`, `.git`, `__pycache__`, `*.log`, `.DS_Store`.
+
+You can also set **per-directory** excludes — handy when one project needs `node_modules` ignored and another doesn't:
+
+```bash
+nimbus add ~/projects/app1
+nimbus add ~/projects/app2
+
+nimbus exclude add ~/projects/app1 node_modules   # only ignored in app1
+nimbus exclude add global "*.tmp"                 # ignored everywhere
+```
+
+Per-directory rules stack on top of the global ones. Patterns are glob-style and matched against filenames and folder names anywhere inside the tracked directory.
 
 ### Example
 

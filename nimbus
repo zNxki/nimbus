@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 Nimbus - a lightweight CLI backup tool that ships your folders to Google Drive.
-https://github.com/zNxki_/nimbus
+https://github.com/yourusername/nimbus
 """
 
 import argparse
+import fnmatch
 import json
 import os
 import subprocess
@@ -18,7 +19,7 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 LOG_FILE = CONFIG_DIR / "nimbus.log"
 STAGING_DIR = Path.home() / ".local" / "share" / "nimbus" / "staging"
 CRON_TAG = "# NIMBUS-BACKUP-JOB"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 # ANSI colors
 C_RESET = "\033[0m"
@@ -39,13 +40,14 @@ BANNER = f"""{C_CYAN}{C_BOLD}
 """
 
 DEFAULT_CONFIG = {
-    "directories": [],
+    "directories": [],  # list of {"path": str, "excludes": [str]}
     "remote": None,   # e.g. "gdrive:MyBackups"
-    "schedule": None  # e.g. "1h", "30m", "1d"
+    "schedule": None,  # e.g. "1h", "30m", "1d"
+    "excludes": ["node_modules", ".git", "__pycache__", "*.log", ".DS_Store"]  # global, applied to all dirs
 }
 
 
-# utils
+# utils 
 
 def load_config():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -53,7 +55,19 @@ def load_config():
         save_config(DEFAULT_CONFIG)
         return dict(DEFAULT_CONFIG)
     with open(CONFIG_FILE) as f:
-        return json.load(f)
+        cfg = json.load(f)
+    changed = False
+    for key, value in DEFAULT_CONFIG.items():
+        if key not in cfg:
+            cfg[key] = value
+            changed = True
+    # migrate old "directories": ["path", ...] -> [{"path": "path", "excludes": []}, ...]
+    if cfg["directories"] and isinstance(cfg["directories"][0], str):
+        cfg["directories"] = [{"path": p, "excludes": []} for p in cfg["directories"]]
+        changed = True
+    if changed:
+        save_config(cfg)
+    return cfg
 
 
 def save_config(cfg):
@@ -88,7 +102,14 @@ def check_rclone():
         sys.exit(1)
 
 
-# commands
+# commands 
+
+def find_dir_entry(cfg, path):
+    for entry in cfg["directories"]:
+        if entry["path"] == path:
+            return entry
+    return None
+
 
 def cmd_add(args):
     cfg = load_config()
@@ -96,10 +117,10 @@ def cmd_add(args):
     if not os.path.isdir(path):
         err(f"Directory '{path}' does not exist.")
         sys.exit(1)
-    if path in cfg["directories"]:
+    if find_dir_entry(cfg, path):
         warn(f"'{path}' is already tracked.")
         return
-    cfg["directories"].append(path)
+    cfg["directories"].append({"path": path, "excludes": []})
     save_config(cfg)
     ok(f"Added directory: {path}")
 
@@ -107,10 +128,11 @@ def cmd_add(args):
 def cmd_remove(args):
     cfg = load_config()
     path = str(Path(args.directory).expanduser().resolve())
-    if path not in cfg["directories"]:
+    entry = find_dir_entry(cfg, path)
+    if not entry:
         warn(f"'{path}' was not tracked.")
         return
-    cfg["directories"].remove(path)
+    cfg["directories"].remove(entry)
     save_config(cfg)
     ok(f"Removed directory: {path}")
 
@@ -121,10 +143,13 @@ def cmd_list(args):
     if not cfg["directories"]:
         print(f"  {C_DIM}(none yet — run: nimbus add <directory>){C_RESET}")
     else:
-        for d in cfg["directories"]:
-            print(f"  {C_CYAN}•{C_RESET} {d}")
+        for entry in cfg["directories"]:
+            print(f"  {C_CYAN}•{C_RESET} {entry['path']}")
+            if entry.get("excludes"):
+                print(f"      {C_DIM}excludes: {', '.join(entry['excludes'])}{C_RESET}")
     print(f"\n{C_BOLD}Remote:{C_RESET}   {cfg['remote'] or C_DIM + '(not configured)' + C_RESET}")
     print(f"{C_BOLD}Schedule:{C_RESET} {cfg['schedule'] or C_DIM + '(none)' + C_RESET}")
+    print(f"{C_BOLD}Global excludes:{C_RESET} {', '.join(cfg['excludes']) if cfg['excludes'] else C_DIM + '(none)' + C_RESET}")
 
 
 def cmd_set(args):
@@ -159,6 +184,17 @@ def cmd_set(args):
     ok(f"Google Drive remote set: {cfg['remote']}")
 
 
+def make_exclude_filter(patterns):
+    def _filter(tarinfo):
+        name = os.path.basename(tarinfo.name)
+        path_parts = tarinfo.name.split("/")
+        for pattern in patterns:
+            if fnmatch.fnmatch(name, pattern) or any(fnmatch.fnmatch(p, pattern) for p in path_parts):
+                return None
+        return tarinfo
+    return _filter
+
+
 def run_backup(cfg):
     check_rclone()
     if not cfg["directories"]:
@@ -171,7 +207,8 @@ def run_backup(cfg):
     STAGING_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    for d in cfg["directories"]:
+    for entry in cfg["directories"]:
+        d = entry["path"]
         if not os.path.isdir(d):
             warn(f"'{d}' no longer exists, skipping.")
             continue
@@ -179,9 +216,11 @@ def run_backup(cfg):
         archive_name = f"{name}_{timestamp}.tar.gz"
         archive_path = STAGING_DIR / archive_name
 
+        combined_excludes = cfg.get("excludes", []) + entry.get("excludes", [])
         log(f"Compressing '{d}' -> {archive_name}", C_CYAN)
+        exclude_filter = make_exclude_filter(combined_excludes)
         with tarfile.open(archive_path, "w:gz") as tar:
-            tar.add(d, arcname=name)
+            tar.add(d, arcname=name, filter=exclude_filter)
 
         log(f"Uploading to {cfg['remote']}...", C_CYAN)
         result = subprocess.run(
@@ -267,6 +306,62 @@ def cmd_log(args):
             print(line.strip())
 
 
+def resolve_exclude_target(cfg, target):
+    """Returns the list object to modify: cfg['excludes'] if target=='global',
+    otherwise the excludes list of the matching tracked directory."""
+    if target == "global":
+        return cfg["excludes"], "global"
+    path = str(Path(target).expanduser().resolve())
+    entry = find_dir_entry(cfg, path)
+    if not entry:
+        err(f"'{path}' is not a tracked directory. Use: nimbus add {path}")
+        sys.exit(1)
+    return entry["excludes"], path
+
+
+def cmd_exclude_add(args):
+    cfg = load_config()
+    excludes, label = resolve_exclude_target(cfg, args.target)
+    if args.pattern in excludes:
+        warn(f"'{args.pattern}' is already excluded for {label}.")
+        return
+    excludes.append(args.pattern)
+    save_config(cfg)
+    ok(f"Now excluding '{args.pattern}' for {label}")
+
+
+def cmd_exclude_remove(args):
+    cfg = load_config()
+    excludes, label = resolve_exclude_target(cfg, args.target)
+    if args.pattern not in excludes:
+        warn(f"'{args.pattern}' was not excluded for {label}.")
+        return
+    excludes.remove(args.pattern)
+    save_config(cfg)
+    ok(f"No longer excluding '{args.pattern}' for {label}")
+
+
+def cmd_exclude_list(args):
+    cfg = load_config()
+    print(f"{C_BOLD}Global excludes{C_RESET} {C_DIM}(apply to every directory){C_RESET}")
+    if not cfg["excludes"]:
+        print(f"  {C_DIM}(none){C_RESET}")
+    else:
+        for p in cfg["excludes"]:
+            print(f"  {C_RED}✖{C_RESET} {p}")
+
+    print(f"\n{C_BOLD}Per-directory excludes:{C_RESET}")
+    if not cfg["directories"]:
+        print(f"  {C_DIM}(no directories tracked yet){C_RESET}")
+    for entry in cfg["directories"]:
+        print(f"  {C_CYAN}{entry['path']}{C_RESET}")
+        if not entry.get("excludes"):
+            print(f"    {C_DIM}(none){C_RESET}")
+        else:
+            for p in entry["excludes"]:
+                print(f"    {C_RED}✖{C_RESET} {p}")
+
+
 def cmd_restore(args):
     check_rclone()
     cfg = load_config()
@@ -277,7 +372,9 @@ def cmd_restore(args):
     subprocess.run(["rclone", "ls", cfg["remote"]])
     print(f"\nTo download a file: rclone copy {cfg['remote']}/<filename> <local_destination>")
 
-# entrypoint
+
+# entrypoint 
+
 def main():
     parser = argparse.ArgumentParser(prog="nimbus", description="Ship your folders to Google Drive, effortlessly.")
     parser.add_argument("-v", "--version", action="version", version=f"nimbus {VERSION}")
@@ -317,6 +414,22 @@ def main():
 
     p = sub.add_parser("restore", help="List available backups on Drive for restoring")
     p.set_defaults(func=cmd_restore)
+
+    p_excl = sub.add_parser("exclude", help="Manage excluded files/folders (e.g. node_modules)")
+    excl_sub = p_excl.add_subparsers(dest="exclude_command", required=True)
+
+    pe = excl_sub.add_parser("add", help="Add an exclude pattern ('global' or a tracked directory)")
+    pe.add_argument("target", help="'global' to apply everywhere, or a tracked directory path")
+    pe.add_argument("pattern")
+    pe.set_defaults(func=cmd_exclude_add)
+
+    pe = excl_sub.add_parser("remove", help="Remove an exclude pattern ('global' or a tracked directory)")
+    pe.add_argument("target", help="'global' to apply everywhere, or a tracked directory path")
+    pe.add_argument("pattern")
+    pe.set_defaults(func=cmd_exclude_remove)
+
+    pe = excl_sub.add_parser("list", help="List excluded patterns")
+    pe.set_defaults(func=cmd_exclude_list)
 
     args = parser.parse_args()
     args.func(args)
