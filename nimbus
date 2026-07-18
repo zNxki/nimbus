@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+"""
+Nimbus - a lightweight CLI backup tool that ships your folders to Google Drive.
+https://github.com/zNxki_/nimbus
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tarfile
+from datetime import datetime
+from pathlib import Path
+
+CONFIG_DIR = Path.home() / ".config" / "nimbus"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+LOG_FILE = CONFIG_DIR / "nimbus.log"
+STAGING_DIR = Path.home() / ".local" / "share" / "nimbus" / "staging"
+CRON_TAG = "# NIMBUS-BACKUP-JOB"
+VERSION = "1.0.0"
+
+# ANSI colors
+C_RESET = "\033[0m"
+C_CYAN = "\033[96m"
+C_GREEN = "\033[92m"
+C_YELLOW = "\033[93m"
+C_RED = "\033[91m"
+C_BOLD = "\033[1m"
+C_DIM = "\033[2m"
+
+BANNER = f"""{C_CYAN}{C_BOLD}
+ _   _ _           _
+| \\ | (_)_ __ ___ | |__  _   _ ___
+|  \\| | | '_ ` _ \\| '_ \\| | | / __|
+| |\\  | | | | | | | |_) | |_| \\__ \\
+|_| \\_|_|_| |_| |_|_.__/ \\__,_|___/
+{C_RESET}{C_DIM}      ship your files to the cloud, v{VERSION}{C_RESET}
+"""
+
+DEFAULT_CONFIG = {
+    "directories": [],
+    "remote": None,   # e.g. "gdrive:MyBackups"
+    "schedule": None  # e.g. "1h", "30m", "1d"
+}
+
+
+# utils
+
+def load_config():
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if not CONFIG_FILE.exists():
+        save_config(DEFAULT_CONFIG)
+        return dict(DEFAULT_CONFIG)
+    with open(CONFIG_FILE) as f:
+        return json.load(f)
+
+
+def save_config(cfg):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
+def log(msg, color=C_RESET):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"{C_DIM}[{stamp}]{C_RESET} {color}{msg}{C_RESET}")
+    with open(LOG_FILE, "a") as f:
+        f.write(f"[{stamp}] {msg}\n")
+
+
+def ok(msg):
+    log(f"✔ {msg}", C_GREEN)
+
+
+def warn(msg):
+    log(f"⚠ {msg}", C_YELLOW)
+
+
+def err(msg):
+    log(f"✖ {msg}", C_RED)
+
+
+def check_rclone():
+    if subprocess.run(["which", "rclone"], capture_output=True).returncode != 0:
+        err("'rclone' is not installed. Run: sudo apt install rclone")
+        sys.exit(1)
+
+
+# commands
+
+def cmd_add(args):
+    cfg = load_config()
+    path = str(Path(args.directory).expanduser().resolve())
+    if not os.path.isdir(path):
+        err(f"Directory '{path}' does not exist.")
+        sys.exit(1)
+    if path in cfg["directories"]:
+        warn(f"'{path}' is already tracked.")
+        return
+    cfg["directories"].append(path)
+    save_config(cfg)
+    ok(f"Added directory: {path}")
+
+
+def cmd_remove(args):
+    cfg = load_config()
+    path = str(Path(args.directory).expanduser().resolve())
+    if path not in cfg["directories"]:
+        warn(f"'{path}' was not tracked.")
+        return
+    cfg["directories"].remove(path)
+    save_config(cfg)
+    ok(f"Removed directory: {path}")
+
+
+def cmd_list(args):
+    cfg = load_config()
+    print(f"{C_BOLD}Tracked directories:{C_RESET}")
+    if not cfg["directories"]:
+        print(f"  {C_DIM}(none yet — run: nimbus add <directory>){C_RESET}")
+    else:
+        for d in cfg["directories"]:
+            print(f"  {C_CYAN}•{C_RESET} {d}")
+    print(f"\n{C_BOLD}Remote:{C_RESET}   {cfg['remote'] or C_DIM + '(not configured)' + C_RESET}")
+    print(f"{C_BOLD}Schedule:{C_RESET} {cfg['schedule'] or C_DIM + '(none)' + C_RESET}")
+
+
+def cmd_set(args):
+    cfg = load_config()
+    if args.key.upper() != "GOOGLE_DRIVE":
+        err("Unknown key. Usage: nimbus set GOOGLE_DRIVE")
+        sys.exit(1)
+
+    check_rclone()
+    print(f"{C_CYAN}Starting guided rclone setup for Google Drive...{C_RESET}")
+    print("Choose 'n' for a new remote, then type 'drive' as the storage type.")
+    subprocess.run(["rclone", "config"])
+
+    remotes = subprocess.run(["rclone", "listremotes"], capture_output=True, text=True).stdout.split()
+    if not remotes:
+        err("No rclone remote found. Setup aborted.")
+        sys.exit(1)
+
+    print(f"\n{C_BOLD}Available remotes:{C_RESET}")
+    for i, r in enumerate(remotes):
+        print(f"  [{i}] {r}")
+    idx = input("Pick the remote to use for backups: ").strip()
+    try:
+        remote_name = remotes[int(idx)]
+    except (ValueError, IndexError):
+        err("Invalid selection.")
+        sys.exit(1)
+
+    subfolder = input("Google Drive folder name for backups (default: Backups): ").strip() or "Backups"
+    cfg["remote"] = f"{remote_name}{subfolder}"
+    save_config(cfg)
+    ok(f"Google Drive remote set: {cfg['remote']}")
+
+
+def run_backup(cfg):
+    check_rclone()
+    if not cfg["directories"]:
+        warn("No directories to back up. Run: nimbus add <directory>")
+        return
+    if not cfg["remote"]:
+        warn("No remote configured. Run: nimbus set GOOGLE_DRIVE")
+        return
+
+    STAGING_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    for d in cfg["directories"]:
+        if not os.path.isdir(d):
+            warn(f"'{d}' no longer exists, skipping.")
+            continue
+        name = Path(d).name or "root"
+        archive_name = f"{name}_{timestamp}.tar.gz"
+        archive_path = STAGING_DIR / archive_name
+
+        log(f"Compressing '{d}' -> {archive_name}", C_CYAN)
+        with tarfile.open(archive_path, "w:gz") as tar:
+            tar.add(d, arcname=name)
+
+        log(f"Uploading to {cfg['remote']}...", C_CYAN)
+        result = subprocess.run(
+            ["rclone", "copy", str(archive_path), cfg["remote"]],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            ok(f"{archive_name} uploaded to Google Drive.")
+        else:
+            err(f"Upload failed for {archive_name}: {result.stderr.strip()}")
+
+        archive_path.unlink(missing_ok=True)
+
+    ok("Backup run complete.")
+
+
+def cmd_run(args):
+    cfg = load_config()
+    run_backup(cfg)
+
+
+def cmd_each(args):
+    cfg = load_config()
+    time_str = args.time.strip().lower()
+
+    unit = time_str[-1]
+    if unit not in ("m", "h", "d") or not time_str[:-1].isdigit():
+        err("Invalid time format. Use e.g: 30m, 2h, 1d")
+        sys.exit(1)
+    value = int(time_str[:-1])
+
+    if unit == "m":
+        cron_expr = f"*/{value} * * * *"
+    elif unit == "h":
+        cron_expr = f"0 */{value} * * *"
+    else:
+        cron_expr = f"0 0 */{value} * *"
+
+    script_path = os.path.abspath(__file__)
+    python_bin = sys.executable
+    cron_line = f"{cron_expr} {python_bin} {script_path} run {CRON_TAG}"
+
+    existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
+    lines = [l for l in existing.splitlines() if CRON_TAG not in l]
+    lines.append(cron_line)
+    subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n", text=True)
+
+    cfg["schedule"] = time_str
+    save_config(cfg)
+    ok(f"Scheduled backup every {time_str} (cron: {cron_expr})")
+
+
+def cmd_unschedule(args):
+    existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
+    lines = [l for l in existing.splitlines() if CRON_TAG not in l]
+    subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n", text=True)
+    cfg = load_config()
+    cfg["schedule"] = None
+    save_config(cfg)
+    ok("Schedule removed.")
+
+
+def cmd_status(args):
+    cfg = load_config()
+    print(BANNER)
+    print(f"{C_BOLD}Tracked directories:{C_RESET} {len(cfg['directories'])}")
+    print(f"{C_BOLD}Remote:{C_RESET}              {cfg['remote'] or C_DIM + '(not configured)' + C_RESET}")
+    print(f"{C_BOLD}Schedule:{C_RESET}            {cfg['schedule'] or C_DIM + '(none)' + C_RESET}")
+    if LOG_FILE.exists():
+        print(f"\n{C_BOLD}Recent activity:{C_RESET}")
+        with open(LOG_FILE) as f:
+            for line in f.readlines()[-5:]:
+                print("  " + line.strip())
+
+
+def cmd_log(args):
+    if not LOG_FILE.exists():
+        print("No log yet.")
+        return
+    n = args.lines or 20
+    with open(LOG_FILE) as f:
+        for line in f.readlines()[-n:]:
+            print(line.strip())
+
+
+def cmd_restore(args):
+    check_rclone()
+    cfg = load_config()
+    if not cfg["remote"]:
+        err("No remote configured.")
+        sys.exit(1)
+    print(f"{C_BOLD}Files available on {cfg['remote']}:{C_RESET}")
+    subprocess.run(["rclone", "ls", cfg["remote"]])
+    print(f"\nTo download a file: rclone copy {cfg['remote']}/<filename> <local_destination>")
+
+# entrypoint
+def main():
+    parser = argparse.ArgumentParser(prog="nimbus", description="Ship your folders to Google Drive, effortlessly.")
+    parser.add_argument("-v", "--version", action="version", version=f"nimbus {VERSION}")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("add", help="Track a directory for backup")
+    p.add_argument("directory")
+    p.set_defaults(func=cmd_add)
+
+    p = sub.add_parser("remove", help="Stop tracking a directory")
+    p.add_argument("directory")
+    p.set_defaults(func=cmd_remove)
+
+    p = sub.add_parser("list", help="List tracked directories")
+    p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser("set", help="Configure options (e.g. GOOGLE_DRIVE)")
+    p.add_argument("key")
+    p.set_defaults(func=cmd_set)
+
+    p = sub.add_parser("run", help="Run a backup right now")
+    p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("each", help="Schedule automatic backups (e.g. 30m, 2h, 1d)")
+    p.add_argument("time")
+    p.set_defaults(func=cmd_each)
+
+    p = sub.add_parser("unschedule", help="Remove the automatic schedule")
+    p.set_defaults(func=cmd_unschedule)
+
+    p = sub.add_parser("status", help="Show config status and recent activity")
+    p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("log", help="Show the log")
+    p.add_argument("--lines", type=int, help="Number of lines to show")
+    p.set_defaults(func=cmd_log)
+
+    p = sub.add_parser("restore", help="List available backups on Drive for restoring")
+    p.set_defaults(func=cmd_restore)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()
