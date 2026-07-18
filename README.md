@@ -24,14 +24,22 @@ Nimbus is a lightweight CLI tool for Ubuntu/Linux that backs up any directory to
 
 ## 🚀 Installation (Ubuntu, Arch, Fedora & derivatives)
 
+### One-liner (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zNxki/nimbus/main/install.sh | bash
+```
+
+This downloads and runs the installer directly — it auto-detects your package manager (`apt`, `pacman`, or `dnf`), installs `rclone` and `python3`, and places `nimbus` in `/usr/local/bin`.
+
+### From a local clone
+
 ```bash
 git clone https://github.com/zNxki/nimbus.git
 cd nimbus
 chmod +x nimbus install.sh
 ./install.sh
 ```
-
-The installer auto-detects your package manager (`apt`, `pacman`, or `dnf`), sets up `rclone` and `python3`, and places `nimbus` in `/usr/local/bin` so it's available system-wide.
 
 ## 🔧 Setup
 
