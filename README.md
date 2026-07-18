@@ -43,17 +43,32 @@ chmod +x nimbus install.sh
 
 ### Managing the installation
 
+Run without arguments for an interactive menu:
+
 ```bash
-./install.sh install     # fresh install (default if no argument is given)
-./install.sh update      # re-download the latest nimbus binary, config/backups untouched
+./install.sh
+```
+```
+[1] INSTALL
+[2] UPDATE
+[3] UNINSTALL
+
+Choice:
+```
+
+Or pass the action directly:
+
+```bash
+./install.sh install     # fresh install
+./install.sh update      # checks the latest version; updates only if outdated, otherwise says "up-to-date"
 ./install.sh uninstall   # remove nimbus, the cron job, and (optionally) your config/logs
 ```
 
-Via curl, pass the action after `-s --`:
+Via curl, pass the action after `-s --` (or omit it to get the interactive menu):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yourusername/nimbus/main/install.sh | bash -s -- update
-curl -fsSL https://raw.githubusercontent.com/yourusername/nimbus/main/install.sh | bash -s -- uninstall
+curl -fsSL https://raw.githubusercontent.com/zNxki/nimbus/main/install.sh | bash -s -- update
+curl -fsSL https://raw.githubusercontent.com/zNxki/nimbus/main/install.sh | bash -s -- uninstall
 ```
 
 ## 🔧 Setup

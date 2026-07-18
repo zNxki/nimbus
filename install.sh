@@ -8,7 +8,7 @@ RED='\033[91m'
 RESET='\033[0m'
 
 REPO_RAW_URL="https://raw.githubusercontent.com/zNxki/nimbus/main"
-ACTION="${1:-install}"
+ACTION="${1:-}"
 
 banner() {
     echo -e "${CYAN}"
@@ -54,6 +54,14 @@ fetch_nimbus_binary() {
     sudo chmod +x /usr/local/bin/nimbus
 }
 
+get_remote_version() {
+    curl -fsSL "$REPO_RAW_URL/nimbus" 2>/dev/null | grep -m1 '^VERSION = ' | sed -E 's/VERSION = "(.*)"/\1/'
+}
+
+get_local_version() {
+    nimbus --version 2>/dev/null | awk '{print $2}'
+}
+
 do_install() {
     banner
     echo -e "Installing Nimbus...\n"
@@ -81,9 +89,23 @@ do_update() {
         echo -e "${YELLOW}Nimbus is not installed yet. Run: ./install.sh install${RESET}"
         exit 1
     fi
+
+    echo "Checking for updates..."
+    LOCAL_VERSION="$(get_local_version)"
+    REMOTE_VERSION="$(get_remote_version)"
+
+    if [ -z "$REMOTE_VERSION" ]; then
+        echo -e "${YELLOW}Could not check the latest version, updating anyway to be safe...${RESET}"
+    elif [ "$LOCAL_VERSION" = "$REMOTE_VERSION" ]; then
+        echo -e "${GREEN}✔ Nimbus is already up-to-date (v${LOCAL_VERSION}).${RESET}"
+        return
+    else
+        echo -e "${CYAN}New version available: v${LOCAL_VERSION} -> v${REMOTE_VERSION}${RESET}"
+    fi
+
     echo "Updating Nimbus (config and backups are left untouched)..."
     fetch_nimbus_binary
-    echo -e "\n${GREEN}✔ Nimbus updated to the latest version.${RESET}"
+    echo -e "\n${GREEN}✔ Nimbus updated.${RESET}"
     nimbus --version
 }
 
@@ -118,6 +140,25 @@ do_uninstall() {
 
     echo -e "\n${GREEN}Nimbus has been uninstalled.${RESET}"
 }
+
+show_menu() {
+    banner
+    echo "[1] INSTALL"
+    echo "[2] UPDATE"
+    echo "[3] UNINSTALL"
+    echo ""
+    read -p "Choice: " choice
+    case "$choice" in
+        1) ACTION="install" ;;
+        2) ACTION="update" ;;
+        3) ACTION="uninstall" ;;
+        *) echo -e "${RED}Invalid choice.${RESET}"; exit 1 ;;
+    esac
+}
+
+if [ -z "$ACTION" ]; then
+    show_menu
+fi
 
 case "$ACTION" in
     install)   do_install ;;
