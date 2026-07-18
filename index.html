@@ -1,0 +1,171 @@
+<!-- HOMEPAGE docs.znxki.it -->
+
+
+
+
+<!doctype html>
+<html lang="it">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>docs.znxki.it</title>
+    <meta name="description" content="Documentazione dei progetti znxki" />
+    <link rel="icon" href="/nimbus/favicon.svg" />
+    <style>
+        :root {
+            --bg: #0b0d0f;
+            --bg-raised: #111417;
+            --line: #23282d;
+            --fg: #d8dee3;
+            --fg-dim: #7b868f;
+            --accent: #5fd0a8;
+            --accent-dim: #2c5c4c;
+            --mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: var(--mono);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 8vh 5vw 6vh;
+        }
+
+        .wrap {
+            width: 100%;
+            max-width: 640px;
+        }
+
+        .prompt {
+            color: var(--fg-dim);
+            font-size: 0.85rem;
+            letter-spacing: 0.02em;
+            margin-bottom: 0.9rem;
+        }
+
+        .prompt .sym {
+            color: var(--accent);
+        }
+
+        h1 {
+            font-size: clamp(1.6rem, 4vw, 2.1rem);
+            font-weight: 600;
+            margin: 0 0 0.3rem;
+            letter-spacing: -0.01em;
+        }
+
+        h1 .dim {
+            color: var(--fg-dim);
+            font-weight: 400;
+        }
+
+        .sub {
+            color: var(--fg-dim);
+            font-size: 0.95rem;
+            margin: 0 0 2.4rem;
+            line-height: 1.5;
+        }
+
+        .listing {
+            border-top: 1px solid var(--line);
+        }
+
+        a.entry {
+            display: flex;
+            align-items: baseline;
+            gap: 0.9rem;
+            padding: 1.05rem 0.2rem;
+            border-bottom: 1px solid var(--line);
+            text-decoration: none;
+            color: var(--fg);
+            transition: background 0.15s ease, padding-left 0.15s ease;
+        }
+
+        a.entry:hover {
+            background: var(--bg-raised);
+            padding-left: 0.6rem;
+        }
+
+        a.entry:hover .arrow {
+            transform: translateX(3px);
+            opacity: 1;
+        }
+
+        a.entry:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: -2px;
+        }
+
+        .entry .path {
+            color: var(--accent);
+            font-weight: 600;
+            font-size: 1rem;
+            white-space: nowrap;
+        }
+
+        .entry .desc {
+            color: var(--fg-dim);
+            font-size: 0.88rem;
+            flex: 1;
+        }
+
+        .entry .arrow {
+            color: var(--fg-dim);
+            opacity: 0;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            font-size: 1rem;
+        }
+
+        footer {
+            margin-top: 3rem;
+            color: var(--fg-dim);
+            font-size: 0.78rem;
+            opacity: 0.6;
+        }
+
+        @media (max-width: 480px) {
+            a.entry {
+                flex-wrap: wrap;
+            }
+
+            .entry .desc {
+                flex-basis: 100%;
+                order: 3;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <div class="prompt"><span class="sym">$</span> ls /docs</div>
+        <h1>docs<span class="dim">.znxki.it</span></h1>
+        <p class="sub">Documentazione dei progetti znxki. Seleziona quella che ti serve.</p>
+
+        <nav class="listing">
+            <a class="entry" href="/nimbus/">
+                <span class="path">nimbus/</span>
+                <span class="desc">Ship your folders to Google Drive, straight from your terminal.</span>
+                <span class="arrow">&rarr;</span>
+            </a>
+        </nav>
+
+        <footer>znxki &mdash; documentazione</footer>
+    </div>
+</body>
+
+</html>
